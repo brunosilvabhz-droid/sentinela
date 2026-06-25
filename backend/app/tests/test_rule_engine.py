@@ -1,5 +1,6 @@
 import pandas as pd
 
+import app.db.base  # noqa: F401
 from app.models.alert import Alert
 from app.services.rule_engine import _build_mask
 

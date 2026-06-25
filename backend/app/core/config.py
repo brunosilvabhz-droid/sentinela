@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
-    smtp_host: str = "localhost"
+    smtp_host: str = ""
     smtp_port: int = 1025
     smtp_username: str = ""
     smtp_password: str = ""

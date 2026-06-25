@@ -5,6 +5,9 @@ __pycache__/
 node_modules/
 dist/
 storage/uploads/
+backend/storage/uploads/
 .pytest_cache/
+pytest-cache-files-*/
+backend/pytest-cache-files-*/
 sentinela_local.db
 backend/sentinela_local.db

@@ -23,6 +23,8 @@ def send_alert_notifications(alert: Alert, result) -> None:
 
 def send_email(recipients: list[str], subject: str, body: str) -> None:
     settings = get_settings()
+    if not settings.smtp_host:
+        return
     message = EmailMessage()
     message["From"] = settings.smtp_from_email
     message["To"] = ", ".join([r for r in recipients if "@" in r])
