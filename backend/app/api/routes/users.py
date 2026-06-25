@@ -5,7 +5,7 @@ from app.api.deps import get_current_user, require_admin
 from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.schemas.user import TenantUserCreate, UserCreate, UserRead, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -20,12 +20,10 @@ def list_users(
 
 @router.post("", response_model=UserRead)
 def create_user(
-    payload: UserCreate,
+    payload: TenantUserCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> User:
-    if payload.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant_id divergente")
     user = User(
         tenant_id=current_user.tenant_id,
         name=payload.name,

@@ -43,6 +43,8 @@ Copy-Item .env.local.example .env
 python -m app.db.init_db
 ```
 
+Se estiver usando um banco local antigo criado antes do Alembic, nao rode `alembic upgrade head` diretamente nele. Para um banco novo de deploy, o Alembic cria tudo. Para desenvolvimento local, voce pode continuar usando `init_db` ou apagar `sentinela_local.db` e recriar do zero.
+
 ## 6. Rodar API
 
 ```powershell

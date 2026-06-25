@@ -13,6 +13,7 @@ import {
   RefreshCcw,
   Shield,
   Trash2,
+  Users,
 } from "lucide-react";
 import "./styles.css";
 
@@ -54,6 +55,13 @@ const emptyAlertForm = {
   channels: ["email"],
 };
 
+const emptyUserForm = {
+  name: "",
+  email: "",
+  password: "",
+  role: "user",
+};
+
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem("sentinela_token") || "");
   const [email, setEmail] = useState("admin@demo.com");
@@ -63,14 +71,18 @@ function App() {
   const [sources, setSources] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [executions, setExecutions] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [agents, setAgents] = useState([]);
   const [preview, setPreview] = useState(null);
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [sourceForm, setSourceForm] = useState(emptySourceForm);
   const [managedSourceName, setManagedSourceName] = useState("Fonte gerenciada pelo collector");
   const [agentName, setAgentName] = useState("Collector local");
   const [createdAgentToken, setCreatedAgentToken] = useState("");
+  const [collectorConfig, setCollectorConfig] = useState("");
   const [uploadForm, setUploadForm] = useState({ name: "Nova fonte CSV", source_type: "csv", file: null });
   const [alertForm, setAlertForm] = useState(emptyAlertForm);
+  const [userForm, setUserForm] = useState(emptyUserForm);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -121,16 +133,20 @@ function App() {
   }
 
   async function loadWorkspace(authToken = token) {
-    const [dashboard, sourceList, alertList, executionList] = await Promise.all([
+    const [dashboard, sourceList, alertList, executionList, userList, agentList] = await Promise.all([
       api("/dashboard/summary", {}, authToken),
       api("/data-sources", {}, authToken),
       api("/alerts", {}, authToken),
       api("/alerts/executions", {}, authToken),
+      api("/users", {}, authToken),
+      api("/ingestion/agents", {}, authToken),
     ]);
     setSummary(dashboard);
     setSources(sourceList);
     setAlerts(alertList);
     setExecutions(executionList);
+    setUsers(userList);
+    setAgents(agentList);
     if (!selectedSourceId && sourceList[0]) {
       setSelectedSourceId(String(sourceList[0].id));
     }
@@ -177,7 +193,22 @@ function App() {
         body: JSON.stringify({ name: agentName }),
       });
       setCreatedAgentToken(agent.token);
+      setCollectorConfig(buildCollectorConfig({ token: agent.token, sourceId: selectedManagedSourceId(activeSources) }));
       setMessage("Agent criado. Copie o token agora; ele nao sera exibido novamente.");
+      await loadWorkspace();
+    });
+  }
+
+  async function createUser(event) {
+    event.preventDefault();
+    await runAction(async () => {
+      await api("/users", {
+        method: "POST",
+        body: JSON.stringify(userForm),
+      });
+      setUserForm(emptyUserForm);
+      setMessage("Usuario criado.");
+      await loadWorkspace();
     });
   }
 
@@ -271,6 +302,8 @@ function App() {
     setSources([]);
     setAlerts([]);
     setExecutions([]);
+    setUsers([]);
+    setAgents([]);
     setPreview(null);
     setMessage("Sessao encerrada.");
   }
@@ -287,6 +320,7 @@ function App() {
           <NavItem active={activeTab === "sources"} icon={<Database size={18} />} label="Fontes" onClick={() => setActiveTab("sources")} />
           <NavItem active={activeTab === "alerts"} icon={<Bell size={18} />} label="Alertas" onClick={() => setActiveTab("alerts")} />
           <NavItem active={activeTab === "history"} icon={<History size={18} />} label="Historico" onClick={() => setActiveTab("history")} />
+          <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />
         </nav>
       </aside>
 
@@ -341,6 +375,8 @@ function App() {
           <SourcesView
             activeSources={activeSources}
             agentName={agentName}
+            agents={agents}
+            collectorConfig={collectorConfig}
             createAgent={createAgent}
             createDatabaseSource={createDatabaseSource}
             createManagedSource={createManagedSource}
@@ -352,6 +388,7 @@ function App() {
             selectedSourceId={selectedSourceId}
             setAgentName={setAgentName}
             setAlertForm={setAlertForm}
+            setCollectorConfig={setCollectorConfig}
             setManagedSourceName={setManagedSourceName}
             setSourceForm={setSourceForm}
             setUploadForm={setUploadForm}
@@ -377,6 +414,15 @@ function App() {
         )}
 
         {token && activeTab === "history" && <HistoryView executions={executions} />}
+        {token && activeTab === "users" && (
+          <UsersView
+            createUser={createUser}
+            loading={loading}
+            setUserForm={setUserForm}
+            userForm={userForm}
+            users={users}
+          />
+        )}
       </section>
     </main>
   );
@@ -385,6 +431,8 @@ function App() {
 function SourcesView({
   activeSources,
   agentName,
+  agents,
+  collectorConfig,
   createAgent,
   createDatabaseSource,
   createManagedSource,
@@ -396,6 +444,7 @@ function SourcesView({
   selectedSourceId,
   setAgentName,
   setAlertForm,
+  setCollectorConfig,
   setManagedSourceName,
   setSourceForm,
   setUploadForm,
@@ -431,8 +480,24 @@ function SourcesView({
               <code>{createdAgentToken}</code>
             </div>
           )}
+          {createdAgentToken && (
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => setCollectorConfig(buildCollectorConfig({ token: createdAgentToken, sourceId: selectedManagedSourceId(activeSources) }))}
+            >
+              Gerar config.json
+            </button>
+          )}
         </form>
       </section>
+
+      {collectorConfig && (
+        <section className="panel">
+          <div className="panel-title"><h2>Config do collector</h2></div>
+          <pre className="code-block">{collectorConfig}</pre>
+        </section>
+      )}
 
       <section className="grid-2">
         <form className="panel form-grid" onSubmit={uploadSource}>
@@ -488,6 +553,21 @@ function SourcesView({
             </div>
           ))}
           {activeSources.length === 0 && <div className="empty">Nenhuma fonte ativa.</div>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title"><h2>Agents cadastrados</h2></div>
+        <div className="table">
+          <div className="row agents-head"><span>Nome</span><span>Status</span><span>Ultima atividade</span></div>
+          {agents.map((agent) => (
+            <div className="row agents-row" key={agent.id}>
+              <span>{agent.name}</span>
+              <span>{agent.is_active ? "ativo" : "inativo"}</span>
+              <span>{agent.last_seen_at ? new Date(agent.last_seen_at).toLocaleString("pt-BR") : "-"}</span>
+            </div>
+          ))}
+          {agents.length === 0 && <div className="empty">Nenhum agent criado.</div>}
         </div>
       </section>
 
@@ -590,6 +670,49 @@ function HistoryView({ executions }) {
   );
 }
 
+function UsersView({ createUser, loading, setUserForm, userForm, users }) {
+  return (
+    <>
+      <section className="panel form-grid">
+        <div className="panel-title with-action">
+          <h2>Novo usuario</h2>
+          <Users size={18} />
+        </div>
+        <form className="user-form" onSubmit={createUser}>
+          <label>Nome<input value={userForm.name} onChange={(event) => setUserForm((current) => ({ ...current, name: event.target.value }))} /></label>
+          <label>Email<input value={userForm.email} onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))} /></label>
+          <label>Senha<input type="password" value={userForm.password} onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))} /></label>
+          <label>Perfil
+            <select value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}>
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </label>
+          <button disabled={loading || !userForm.name || !userForm.email || userForm.password.length < 8}>
+            <Plus size={16} /> Criar usuario
+          </button>
+        </form>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title"><h2>Usuarios</h2></div>
+        <div className="table">
+          <div className="row users-head"><span>Nome</span><span>Email</span><span>Perfil</span><span>Status</span></div>
+          {users.map((user) => (
+            <div className="row users-row" key={user.id}>
+              <span>{user.name}</span>
+              <span>{user.email}</span>
+              <span>{user.role}</span>
+              <span>{user.is_active ? "ativo" : "inativo"}</span>
+            </div>
+          ))}
+          {users.length === 0 && <div className="empty">Nenhum usuario cadastrado.</div>}
+        </div>
+      </section>
+    </>
+  );
+}
+
 function PreviewPanel({ preview, selectedSourceId }) {
   if (!preview) {
     return (
@@ -658,6 +781,26 @@ function formatApiError(text) {
 
 function pluralize(count, singular, plural) {
   return Number(count) === 1 ? singular : plural;
+}
+
+function selectedManagedSourceId(sources) {
+  return sources.find((source) => source.source_type === "managed")?.id || sources[0]?.id || 1;
+}
+
+function buildCollectorConfig({ token, sourceId }) {
+  return JSON.stringify(
+    {
+      sentinela_api_url: API_URL,
+      agent_token: token || "sentinela_agent_TOKEN_GERADO_NO_SAAS",
+      data_source_id: sourceId,
+      connection_uri: "postgresql+psycopg://user:pass@host:5432/database",
+      query: "select pedido_id, cliente, valor_total, status from public.pedidos",
+      primary_key: "pedido_id",
+      batch_size: 500,
+    },
+    null,
+    2,
+  );
 }
 
 createRoot(document.getElementById("root")).render(<App />);

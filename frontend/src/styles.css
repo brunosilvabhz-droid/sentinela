@@ -193,7 +193,14 @@ select {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.user-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .alert-form button,
+.user-form button,
 .alert-form fieldset {
   align-self: end;
 }
@@ -286,6 +293,16 @@ label.inline input {
   grid-template-columns: 1.2fr 120px 120px 220px minmax(180px, 1fr);
 }
 
+.users-head,
+.users-row {
+  grid-template-columns: 1fr 1.4fr 120px 120px;
+}
+
+.agents-head,
+.agents-row {
+  grid-template-columns: 1fr 120px 220px;
+}
+
 .compact .row {
   grid-template-columns: 1fr 1fr 1fr;
 }
@@ -374,6 +391,16 @@ button.danger {
   overflow-wrap: anywhere;
 }
 
+.code-block {
+  background: #101820;
+  border-radius: 6px;
+  color: #eef4f8;
+  font-size: 13px;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
 .preview-table {
   overflow: auto;
 }
@@ -433,7 +460,8 @@ th {
 
   .grid-2,
   .two-column,
-  .alert-form {
+  .alert-form,
+  .user-form {
     grid-template-columns: 1fr;
   }
 
@@ -450,7 +478,11 @@ th {
   .alert-list-head,
   .alert-list-row,
   .history-head,
-  .history-row {
+  .history-row,
+  .users-head,
+  .users-row,
+  .agents-head,
+  .agents-row {
     grid-template-columns: 1fr;
   }
 }

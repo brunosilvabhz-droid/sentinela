@@ -13,6 +13,13 @@ class UserCreate(BaseModel):
     role: str = "user"
 
 
+class TenantUserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+    role: str = "user"
+
+
 class UserUpdate(BaseModel):
     name: str | None = None
     role: str | None = None

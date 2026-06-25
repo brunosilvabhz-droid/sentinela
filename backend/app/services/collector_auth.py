@@ -2,9 +2,10 @@ import hashlib
 import secrets
 from datetime import datetime, timezone
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.db.session import get_db
 from app.models.collector import CollectorAgent
 
 
@@ -16,7 +17,10 @@ def hash_agent_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def authenticate_agent(db: Session, token: str | None = Header(default=None, alias="X-Agent-Token")) -> CollectorAgent:
+def authenticate_agent(
+    token: str | None = Header(default=None, alias="X-Agent-Token"),
+    db: Session = Depends(get_db),
+) -> CollectorAgent:
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="X-Agent-Token obrigatorio")
     token_hash = hash_agent_token(token)
