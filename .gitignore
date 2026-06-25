@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+node_modules/
+dist/
+storage/uploads/
+.pytest_cache/
+sentinela_local.db
+backend/sentinela_local.db
