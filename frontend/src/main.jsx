@@ -1,24 +1,33 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, Bell, Database, Play, Shield, Users } from "lucide-react";
+import { Activity, Bell, Database, Play, RefreshCcw, Shield, Users } from "lucide-react";
 import "./styles.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
 function App() {
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(() => localStorage.getItem("sentinela_token") || "");
   const [email, setEmail] = useState("admin@demo.com");
   const [password, setPassword] = useState("admin1234");
   const [summary, setSummary] = useState(null);
+  const [sources, setSources] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [executions, setExecutions] = useState([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function api(path, options = {}) {
+  useEffect(() => {
+    if (token) {
+      loadDashboard(token);
+    }
+  }, []);
+
+  async function api(path, options = {}, authToken = token) {
     const response = await fetch(`${API_URL}${path}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
-        Authorization: token ? `Bearer ${token}` : undefined,
+        Authorization: authToken ? `Bearer ${authToken}` : undefined,
         ...(options.headers || {}),
       },
     });
@@ -30,24 +39,64 @@ function App() {
 
   async function login(event) {
     event.preventDefault();
-    const data = await api("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
+    await runAction(async () => {
+      const data = await api("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      }, "");
+      localStorage.setItem("sentinela_token", data.access_token);
+      setToken(data.access_token);
+      setMessage("Login realizado. Dados carregados.");
+      await loadDashboard(data.access_token);
     });
-    setToken(data.access_token);
-    setMessage("Login realizado");
   }
 
-  async function loadDashboard() {
-    const [dashboard, alertList] = await Promise.all([api("/dashboard/summary"), api("/alerts")]);
+  async function loadDashboard(authToken = token) {
+    const [dashboard, sourceList, alertList] = await Promise.all([
+      api("/dashboard/summary", {}, authToken),
+      api("/data-sources", {}, authToken),
+      api("/alerts", {}, authToken),
+    ]);
     setSummary(dashboard);
+    setSources(sourceList);
     setAlerts(alertList);
+    if (alertList[0]) {
+      await loadExecutions(alertList[0].id, authToken);
+    }
   }
 
   async function runAlert(id) {
-    const result = await api(`/alerts/${id}/run`, { method: "POST" });
-    setMessage(`Alerta executado: ${result.status} (${result.matched_count} registros)`);
-    loadDashboard();
+    await runAction(async () => {
+      const result = await api(`/alerts/${id}/run`, { method: "POST" });
+      setMessage(`Alerta executado: ${result.status} (${result.matched_count} registros encontrados)`);
+      await loadDashboard();
+    });
+  }
+
+  async function loadExecutions(alertId, authToken = token) {
+    const rows = await api(`/alerts/${alertId}/executions`, {}, authToken);
+    setExecutions(rows);
+  }
+
+  async function runAction(action) {
+    setLoading(true);
+    try {
+      await action();
+    } catch (error) {
+      setMessage(`Erro: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("sentinela_token");
+    setToken("");
+    setSummary(null);
+    setSources([]);
+    setAlerts([]);
+    setExecutions([]);
+    setMessage("Sessao encerrada");
   }
 
   return (
@@ -71,14 +120,19 @@ function App() {
             <h1>Monitoramento e alertas</h1>
             <p>Console multi-tenant para acompanhar regras, execucoes e canais.</p>
           </div>
-          <button onClick={loadDashboard} disabled={!token}>Atualizar</button>
+          <div className="header-actions">
+            <button onClick={() => runAction(() => loadDashboard())} disabled={!token || loading}>
+              <RefreshCcw size={16} /> Atualizar
+            </button>
+            {token && <button className="secondary" onClick={logout}>Sair</button>}
+          </div>
         </header>
 
         {!token && (
           <form className="panel login" onSubmit={login}>
             <label>Email<input value={email} onChange={(e) => setEmail(e.target.value)} /></label>
             <label>Senha<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-            <button type="submit">Entrar</button>
+            <button type="submit" disabled={loading}>Entrar</button>
           </form>
         )}
 
@@ -93,6 +147,24 @@ function App() {
           </div>
         )}
 
+        {token && (
+          <section className="panel">
+            <div className="panel-title">
+              <h2>Fontes de dados</h2>
+            </div>
+            <div className="table compact">
+              <div className="row source-head"><span>Nome</span><span>Tipo</span><span>Status</span></div>
+              {sources.map((source) => (
+                <div className="row source-row" key={source.id}>
+                  <span>{source.name}</span>
+                  <span>{source.source_type}</span>
+                  <span>{source.is_active ? "ativa" : "inativa"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="panel">
           <div className="panel-title">
             <h2>Alertas cadastrados</h2>
@@ -104,13 +176,34 @@ function App() {
                 <span>{alert.name}</span>
                 <span>{alert.column_name} {alert.condition} {alert.threshold_value}</span>
                 <span>{alert.channels.join(", ")}</span>
-                <button className="icon-button" onClick={() => runAlert(alert.id)} title="Executar agora">
+                <button className="icon-button" onClick={() => runAlert(alert.id)} title="Executar agora" disabled={loading}>
                   <Play size={16} />
                 </button>
               </div>
             ))}
+            {token && alerts.length === 0 && <div className="empty">Nenhum alerta cadastrado.</div>}
           </div>
         </section>
+
+        {token && (
+          <section className="panel">
+            <div className="panel-title">
+              <h2>Ultimas execucoes</h2>
+            </div>
+            <div className="table compact">
+              <div className="row log-head"><span>Status</span><span>Registros</span><span>Inicio</span><span>Erro</span></div>
+              {executions.map((execution) => (
+                <div className="row log-row" key={execution.id}>
+                  <span>{execution.status}</span>
+                  <span>{execution.matched_count}</span>
+                  <span>{new Date(execution.started_at).toLocaleString("pt-BR")}</span>
+                  <span>{execution.error_message || "-"}</span>
+                </div>
+              ))}
+              {executions.length === 0 && <div className="empty">Execute um alerta para gerar historico.</div>}
+            </div>
+          </section>
+        )}
       </section>
     </main>
   );

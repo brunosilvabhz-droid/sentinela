@@ -23,6 +23,10 @@ button {
   background: #1f6feb;
   color: white;
   cursor: pointer;
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
   min-height: 38px;
   padding: 0 14px;
 }
@@ -30,6 +34,11 @@ button {
 button:disabled {
   background: #9aa8b6;
   cursor: not-allowed;
+}
+
+button.secondary {
+  background: #e8eef5;
+  color: #17202a;
 }
 
 .app-shell {
@@ -81,6 +90,11 @@ header {
   margin-bottom: 22px;
 }
 
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
 h1,
 h2,
 p {
@@ -105,6 +119,7 @@ p {
   background: white;
   border: 1px solid #dfe5eb;
   border-radius: 8px;
+  margin-bottom: 18px;
   padding: 18px;
 }
 
@@ -181,10 +196,31 @@ input {
   min-height: 46px;
 }
 
+.compact .row {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.row.source-head,
+.row.log-head {
+  color: #65717c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.row.log-head,
+.row.log-row {
+  grid-template-columns: 140px 120px 220px 1fr;
+}
+
 .row.head {
   color: #65717c;
   font-size: 13px;
   font-weight: 700;
+}
+
+.empty {
+  color: #65717c;
+  padding: 12px 0;
 }
 
 .icon-button {
@@ -233,5 +269,11 @@ input {
   .row {
     grid-template-columns: 1fr;
     padding: 10px 0;
+  }
+
+  .compact .row,
+  .row.log-head,
+  .row.log-row {
+    grid-template-columns: 1fr;
   }
 }

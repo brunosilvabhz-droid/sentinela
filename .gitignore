@@ -1,8 +1,11 @@
 __pycache__/
 *.py[cod]
 .env
+.env.local
+frontend/.env.local
 .venv/
 node_modules/
+frontend/node_modules/
 dist/
 storage/uploads/
 backend/storage/uploads/
