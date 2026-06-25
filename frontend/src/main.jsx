@@ -73,6 +73,7 @@ function App() {
   const [executions, setExecutions] = useState([]);
   const [users, setUsers] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const [preview, setPreview] = useState(null);
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [sourceForm, setSourceForm] = useState(emptySourceForm);
@@ -88,6 +89,7 @@ function App() {
 
   const activeSources = useMemo(() => sources.filter((source) => source.is_active), [sources]);
   const activeAlerts = useMemo(() => alerts.filter((alert) => alert.is_active), [alerts]);
+  const isAdmin = currentUser?.role === "admin";
 
   useEffect(() => {
     if (token) {
@@ -133,20 +135,26 @@ function App() {
   }
 
   async function loadWorkspace(authToken = token) {
-    const [dashboard, sourceList, alertList, executionList, userList, agentList] = await Promise.all([
+    const me = await api("/users/me", {}, authToken);
+    const [dashboard, sourceList, alertList, executionList] = await Promise.all([
       api("/dashboard/summary", {}, authToken),
       api("/data-sources", {}, authToken),
       api("/alerts", {}, authToken),
       api("/alerts/executions", {}, authToken),
-      api("/users", {}, authToken),
-      api("/ingestion/agents", {}, authToken),
     ]);
+    const [userList, agentList] = me.role === "admin"
+      ? await Promise.all([api("/users", {}, authToken), api("/ingestion/agents", {}, authToken)])
+      : [[], []];
+    setCurrentUser(me);
     setSummary(dashboard);
     setSources(sourceList);
     setAlerts(alertList);
     setExecutions(executionList);
     setUsers(userList);
     setAgents(agentList);
+    if (me.role !== "admin" && ["sources", "users"].includes(activeTab)) {
+      setActiveTab("dashboard");
+    }
     if (!selectedSourceId && sourceList[0]) {
       setSelectedSourceId(String(sourceList[0].id));
     }
@@ -304,6 +312,7 @@ function App() {
     setExecutions([]);
     setUsers([]);
     setAgents([]);
+    setCurrentUser(null);
     setPreview(null);
     setMessage("Sessao encerrada.");
   }
@@ -317,10 +326,10 @@ function App() {
         </div>
         <nav>
           <NavItem active={activeTab === "dashboard"} icon={<Activity size={18} />} label="Dashboard" onClick={() => setActiveTab("dashboard")} />
-          <NavItem active={activeTab === "sources"} icon={<Database size={18} />} label="Fontes" onClick={() => setActiveTab("sources")} />
+          {isAdmin && <NavItem active={activeTab === "sources"} icon={<Database size={18} />} label="Fontes" onClick={() => setActiveTab("sources")} />}
           <NavItem active={activeTab === "alerts"} icon={<Bell size={18} />} label="Alertas" onClick={() => setActiveTab("alerts")} />
-          <NavItem active={activeTab === "history"} icon={<History size={18} />} label="Historico" onClick={() => setActiveTab("history")} />
-          <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />
+          <NavItem active={activeTab === "history"} icon={<History size={18} />} label="Relatorios" onClick={() => setActiveTab("history")} />
+          {isAdmin && <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />}
         </nav>
       </aside>
 
@@ -360,18 +369,19 @@ function App() {
               <div>
                 <h2>Ambiente local</h2>
                 <p>API: {API_URL}</p>
+                <p>Usuario: {currentUser?.name} ({currentUser?.role})</p>
                 <p>Fontes cadastradas: {sources.length}</p>
                 <p>Alertas cadastrados: {alerts.length}</p>
               </div>
               <div>
-                <h2>Proximo teste</h2>
-                <p>Crie uma fonte, faca preview, cadastre um alerta e execute pelo botao de play.</p>
+                <h2>{isAdmin ? "Fluxo admin" : "Acesso usuario"}</h2>
+                <p>{isAdmin ? "Cadastre fontes, agents, usuarios e regras de alerta." : "Acompanhe alertas, execucoes e relatorios da sua empresa."}</p>
               </div>
             </section>
           </>
         )}
 
-        {token && activeTab === "sources" && (
+        {token && isAdmin && activeTab === "sources" && (
           <SourcesView
             activeSources={activeSources}
             agentName={agentName}
@@ -414,7 +424,7 @@ function App() {
         )}
 
         {token && activeTab === "history" && <HistoryView executions={executions} />}
-        {token && activeTab === "users" && (
+        {token && isAdmin && activeTab === "users" && (
           <UsersView
             createUser={createUser}
             loading={loading}
