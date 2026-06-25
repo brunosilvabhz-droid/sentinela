@@ -7,7 +7,8 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.data_source import DataSource
 from app.models.user import User
-from app.schemas.data_source import DataSourceCreate, DataSourceRead, DataSourceUpdate
+from app.schemas.data_source import DataSourceCreate, DataSourcePreview, DataSourceRead, DataSourceUpdate
+from app.services.data_loader import load_data_source
 
 router = APIRouter(prefix="/data-sources", tags=["data_sources"])
 UPLOAD_DIR = Path("storage/uploads")
@@ -19,6 +20,28 @@ def list_data_sources(
     current_user: User = Depends(get_current_user),
 ) -> list[DataSource]:
     return db.query(DataSource).filter(DataSource.tenant_id == current_user.tenant_id).all()
+
+
+@router.get("/{data_source_id}/preview", response_model=DataSourcePreview)
+def preview_data_source(
+    data_source_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DataSourcePreview:
+    data_source = (
+        db.query(DataSource)
+        .filter(DataSource.id == data_source_id, DataSource.tenant_id == current_user.tenant_id)
+        .first()
+    )
+    if not data_source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fonte nao encontrada")
+    dataframe = load_data_source(data_source)
+    preview = dataframe.head(20)
+    return DataSourcePreview(
+        columns=[str(column) for column in dataframe.columns],
+        rows=preview.where(preview.notnull(), None).to_dict(orient="records"),
+        total_preview_rows=len(preview),
+    )
 
 
 @router.post("", response_model=DataSourceRead)
@@ -57,6 +80,25 @@ def upload_data_source(
         file_path=str(file_path),
     )
     db.add(data_source)
+    db.commit()
+    db.refresh(data_source)
+    return data_source
+
+
+@router.delete("/{data_source_id}", response_model=DataSourceRead)
+def delete_data_source(
+    data_source_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DataSource:
+    data_source = (
+        db.query(DataSource)
+        .filter(DataSource.id == data_source_id, DataSource.tenant_id == current_user.tenant_id)
+        .first()
+    )
+    if not data_source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fonte nao encontrada")
+    data_source.is_active = False
     db.commit()
     db.refresh(data_source)
     return data_source

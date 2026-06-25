@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models.alert import Alert, AlertExecution
 from app.models.data_source import DataSource
 from app.models.user import User
-from app.schemas.alert import AlertCreate, AlertExecutionRead, AlertRead, AlertUpdate
+from app.schemas.alert import AlertCreate, AlertExecutionRead, AlertExecutionWithAlertRead, AlertRead, AlertUpdate
 from app.services.rule_engine import execute_alert
 from app.services.tenant_limits import assert_can_create_alert
 
@@ -19,6 +19,28 @@ def list_alerts(
     current_user: User = Depends(get_current_user),
 ) -> list[Alert]:
     return db.query(Alert).filter(Alert.tenant_id == current_user.tenant_id).all()
+
+
+@router.get("/executions", response_model=list[AlertExecutionWithAlertRead])
+def list_all_alert_executions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    rows = (
+        db.query(AlertExecution, Alert.name)
+        .join(Alert, Alert.id == AlertExecution.alert_id)
+        .filter(AlertExecution.tenant_id == current_user.tenant_id)
+        .order_by(AlertExecution.started_at.desc())
+        .limit(100)
+        .all()
+    )
+    return [
+        {
+            **execution.__dict__,
+            "alert_name": alert_name,
+        }
+        for execution, alert_name in rows
+    ]
 
 
 @router.post("", response_model=AlertRead)
@@ -35,8 +57,27 @@ def create_alert(
     )
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fonte nao encontrada")
+    if payload.condition not in {">", "<", "=", "==", ">=", "<=", "!="}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Condicao invalida")
+    if not any(channel in {"email", "whatsapp"} for channel in payload.channels):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe ao menos um canal valido")
     alert = Alert(tenant_id=current_user.tenant_id, **payload.model_dump())
     db.add(alert)
+    db.commit()
+    db.refresh(alert)
+    return alert
+
+
+@router.delete("/{alert_id}", response_model=AlertRead)
+def delete_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Alert:
+    alert = db.query(Alert).filter(Alert.id == alert_id, Alert.tenant_id == current_user.tenant_id).first()
+    if not alert:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta nao encontrado")
+    alert.is_active = False
     db.commit()
     db.refresh(alert)
     return alert

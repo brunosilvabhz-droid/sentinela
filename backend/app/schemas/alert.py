@@ -55,3 +55,7 @@ class AlertExecutionRead(ORMModel):
     started_at: datetime
     finished_at: datetime | None
     duration_ms: int | None
+
+
+class AlertExecutionWithAlertRead(AlertExecutionRead):
+    alert_name: str

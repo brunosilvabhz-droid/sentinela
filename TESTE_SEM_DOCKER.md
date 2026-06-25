@@ -54,6 +54,39 @@ Abra:
 - API: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
 
+Se ja houver outro processo usando a porta `8000`, use outra porta:
+
+```powershell
+uvicorn app.main:app --host 127.0.0.1 --port 8003
+```
+
+## 6.1. Rodar frontend
+
+Em outro terminal:
+
+```powershell
+cd C:\Users\bruno\Documents\Codex\2026-06-25\voc-um-arquiteto-de-software-s\outputs\sentinela\frontend
+npm install
+```
+
+Crie ou edite `frontend\.env.local` apontando para a API:
+
+```text
+VITE_API_URL=http://localhost:8003/api/v1
+```
+
+Suba o Vite:
+
+```powershell
+npm run dev -- --host 127.0.0.1 --port 5175
+```
+
+Abra:
+
+```text
+http://localhost:5175
+```
+
 ## 7. Login no Swagger
 
 Em `POST /api/v1/auth/login`, use:

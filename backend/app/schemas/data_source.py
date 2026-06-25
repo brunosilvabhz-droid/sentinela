@@ -31,3 +31,9 @@ class DataSourceRead(ORMModel):
     config: dict | None
     is_active: bool
     created_at: datetime
+
+
+class DataSourcePreview(BaseModel):
+    columns: list[str]
+    rows: list[dict]
+    total_preview_rows: int
