@@ -25,6 +25,24 @@ const emptySourceForm = {
   table_name: "",
 };
 
+const databaseExamples = {
+  postgresql: {
+    title: "Banco PostgreSQL",
+    uri: "postgresql+psycopg://user:pass@host:5432/database",
+    table: "public.pedidos",
+  },
+  oracle: {
+    title: "Banco Oracle",
+    uri: "oracle+oracledb://user:pass@host:1521/?service_name=ORCLPDB1",
+    table: "SCHEMA.PEDIDOS",
+  },
+  sqlserver: {
+    title: "Banco SQL Server",
+    uri: "mssql+pyodbc://user:pass@host:1433/database?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes",
+    table: "dbo.Pedidos",
+  },
+};
+
 const emptyAlertForm = {
   name: "",
   data_source_id: "",
@@ -115,21 +133,21 @@ function App() {
     }
   }
 
-  async function createPostgresSource(event) {
+  async function createDatabaseSource(event) {
     event.preventDefault();
     await runAction(async () => {
       await api("/data-sources", {
         method: "POST",
         body: JSON.stringify({
           name: sourceForm.name,
-          source_type: "postgresql",
+          source_type: sourceForm.source_type,
           connection_uri: sourceForm.connection_uri,
           table_name: sourceForm.table_name,
           config: {},
         }),
       });
       setSourceForm(emptySourceForm);
-      setMessage("Fonte PostgreSQL cadastrada.");
+      setMessage("Fonte de banco cadastrada.");
       await loadWorkspace();
       setActiveTab("sources");
     });
@@ -294,7 +312,7 @@ function App() {
         {token && activeTab === "sources" && (
           <SourcesView
             activeSources={activeSources}
-            createPostgresSource={createPostgresSource}
+            createDatabaseSource={createDatabaseSource}
             deactivateSource={deactivateSource}
             loading={loading}
             preview={preview}
@@ -331,7 +349,7 @@ function App() {
 
 function SourcesView({
   activeSources,
-  createPostgresSource,
+  createDatabaseSource,
   deactivateSource,
   loading,
   preview,
@@ -344,6 +362,8 @@ function SourcesView({
   uploadForm,
   uploadSource,
 }) {
+  const dbExample = databaseExamples[sourceForm.source_type] || databaseExamples.postgresql;
+
   return (
     <>
       <section className="grid-2">
@@ -364,14 +384,21 @@ function SourcesView({
           <button disabled={loading || !uploadForm.name}><Plus size={16} /> Criar fonte</button>
         </form>
 
-        <form className="panel form-grid" onSubmit={createPostgresSource}>
+        <form className="panel form-grid" onSubmit={createDatabaseSource}>
           <div className="panel-title with-action">
-            <h2>Banco PostgreSQL</h2>
+            <h2>{dbExample.title}</h2>
             <Database size={18} />
           </div>
+          <label>Tipo de banco
+            <select value={sourceForm.source_type} onChange={(event) => setSourceForm((current) => ({ ...current, source_type: event.target.value }))}>
+              <option value="postgresql">PostgreSQL</option>
+              <option value="oracle">Oracle</option>
+              <option value="sqlserver">SQL Server</option>
+            </select>
+          </label>
           <label>Nome<input value={sourceForm.name} onChange={(event) => setSourceForm((current) => ({ ...current, name: event.target.value }))} /></label>
-          <label>Connection URI<input value={sourceForm.connection_uri} onChange={(event) => setSourceForm((current) => ({ ...current, connection_uri: event.target.value }))} placeholder="postgresql+psycopg://user:pass@host:5432/db" /></label>
-          <label>Tabela<input value={sourceForm.table_name} onChange={(event) => setSourceForm((current) => ({ ...current, table_name: event.target.value }))} /></label>
+          <label>Connection URI<input value={sourceForm.connection_uri} onChange={(event) => setSourceForm((current) => ({ ...current, connection_uri: event.target.value }))} placeholder={dbExample.uri} /></label>
+          <label>Tabela<input value={sourceForm.table_name} onChange={(event) => setSourceForm((current) => ({ ...current, table_name: event.target.value }))} placeholder={dbExample.table} /></label>
           <button disabled={loading || !sourceForm.name || !sourceForm.connection_uri || !sourceForm.table_name}><Plus size={16} /> Criar conexao</button>
         </form>
       </section>

@@ -121,6 +121,27 @@ Teste:
 
 Como nao ha MailHog sem Docker, o envio SMTP pode falhar se o alerta tiver match. O log ainda sera gravado com status `error`. Para testar a regra sem erro de email, edite o alerta e deixe `channels: []`, ou instale um SMTP local.
 
+## Testar Oracle ou SQL Server
+
+No frontend, abra `Fontes`, escolha o tipo de banco e preencha:
+
+```text
+Oracle URI:
+oracle+oracledb://user:pass@host:1521/?service_name=ORCLPDB1
+
+SQL Server URI:
+mssql+pyodbc://user:pass@host:1433/database?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
+```
+
+Exemplos de tabela:
+
+```text
+Oracle: SCHEMA.PEDIDOS
+SQL Server: dbo.Pedidos
+```
+
+Para SQL Server funcionar localmente, o Windows precisa ter o Microsoft ODBC Driver instalado. Para Oracle, o modo thin do `oracledb` costuma funcionar sem Instant Client para conexoes comuns.
+
 ## Opcional: instalar Docker depois
 
 Se quiser usar o ambiente completo com PostgreSQL, Redis, Celery e MailHog, instale o Docker Desktop:

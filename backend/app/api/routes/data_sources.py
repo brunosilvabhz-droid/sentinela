@@ -12,6 +12,7 @@ from app.services.data_loader import load_data_source
 
 router = APIRouter(prefix="/data-sources", tags=["data_sources"])
 UPLOAD_DIR = Path("storage/uploads")
+DATABASE_SOURCE_TYPES = {"postgresql", "oracle", "sqlserver"}
 
 
 @router.get("", response_model=list[DataSourceRead])
@@ -50,6 +51,10 @@ def create_data_source(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DataSource:
+    if payload.source_type not in DATABASE_SOURCE_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de fonte invalido para conexao")
+    if not payload.connection_uri or not payload.table_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="connection_uri e table_name sao obrigatorios")
     data_source = DataSource(tenant_id=current_user.tenant_id, **payload.model_dump())
     db.add(data_source)
     db.commit()

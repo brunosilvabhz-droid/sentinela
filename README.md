@@ -62,7 +62,7 @@ Tabelas:
 
 - `tenants`: empresas/clientes. Campos principais: `id`, `name`, `document`, `plan`, `max_alerts`, `is_active`, `created_at`.
 - `users`: usuarios vinculados ao tenant. Campos: `id`, `tenant_id`, `name`, `email`, `hashed_password`, `role`, `is_active`, `created_at`.
-- `data_sources`: fontes CSV/TXT/Excel/PostgreSQL. Campos: `id`, `tenant_id`, `name`, `source_type`, `file_path`, `connection_uri`, `table_name`, `config`, `is_active`, `created_at`.
+- `data_sources`: fontes CSV/TXT/Excel/PostgreSQL/Oracle/SQL Server. Campos: `id`, `tenant_id`, `name`, `source_type`, `file_path`, `connection_uri`, `table_name`, `config`, `is_active`, `created_at`.
 - `alerts`: regras. Campos: `id`, `tenant_id`, `data_source_id`, `name`, `column_name`, `condition`, `threshold_value`, `frequency`, `recipients`, `channels`, `is_active`, `last_run_at`, `created_at`.
 - `alert_executions`: logs. Campos: `id`, `tenant_id`, `alert_id`, `status`, `matched_count`, `sample_records`, `channels`, `error_message`, `started_at`, `finished_at`, `duration_ms`.
 
@@ -135,6 +135,32 @@ TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
 ```
 
 Se Twilio nao estiver configurado, a chamada de WhatsApp e ignorada para facilitar desenvolvimento local.
+
+## Fontes Oracle e SQL Server
+
+A SENTINELA aceita fontes relacionais via SQLAlchemy:
+
+```text
+PostgreSQL: postgresql+psycopg://user:pass@host:5432/database
+Oracle:     oracle+oracledb://user:pass@host:1521/?service_name=ORCLPDB1
+SQL Server: mssql+pyodbc://user:pass@host:1433/database?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
+```
+
+Exemplos de tabelas:
+
+```text
+PostgreSQL: public.pedidos
+Oracle:     SCHEMA.PEDIDOS
+SQL Server: dbo.Pedidos
+```
+
+Observacoes:
+
+- Oracle usa o pacote Python `oracledb`.
+- SQL Server usa `pyodbc` e precisa do Microsoft ODBC Driver instalado no servidor.
+- Em deploy Linux, instale o ODBC Driver 18 no container ou use uma imagem base customizada.
+- O preview limita a leitura a 10.000 linhas para evitar cargas grandes.
+- O isolamento por cliente continua sendo feito por `tenant_id` nas configuracoes da SENTINELA; a tabela externa deve ser controlada por credenciais de leitura.
 
 ## SaaS, Planos e Limites
 
