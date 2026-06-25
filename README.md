@@ -182,6 +182,8 @@ Opcoes praticas:
 - Render: Postgres gerenciado, Redis, Web Service para API, Worker para Celery e Cron/Background Worker para Beat.
 - Azure: Azure Container Apps, Azure Database for PostgreSQL, Azure Cache for Redis, Key Vault para segredos.
 
+Este repositorio ja inclui `render.yaml`, Alembic e comandos de producao. Veja [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
+
 Checklist de producao:
 
 - Trocar `JWT_SECRET_KEY`.

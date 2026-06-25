@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     environment: str = "local"
     database_url: str = "postgresql+psycopg://sentinela:sentinela@localhost:5432/sentinela"
     redis_url: str = "redis://localhost:6379/0"
+    cors_allowed_origins: str = ""
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
@@ -27,3 +28,13 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def normalize_database_url(database_url: str) -> str:
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return database_url
+
+
+def parse_cors_origins(origins: str) -> list[str]:
+    return [origin.strip() for origin in origins.split(",") if origin.strip()]
