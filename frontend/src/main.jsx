@@ -62,10 +62,20 @@ const emptyUserForm = {
   role: "user",
 };
 
+const emptySignupForm = {
+  company_name: "",
+  document: "",
+  admin_name: "",
+  admin_email: "",
+  admin_password: "",
+};
+
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem("sentinela_token") || "");
   const [email, setEmail] = useState("admin@demo.com");
   const [password, setPassword] = useState("admin1234");
+  const [authMode, setAuthMode] = useState("login");
+  const [signupForm, setSignupForm] = useState(emptySignupForm);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [summary, setSummary] = useState(null);
   const [sources, setSources] = useState([]);
@@ -131,6 +141,28 @@ function App() {
       setToken(data.access_token);
       await loadWorkspace(data.access_token);
       setMessage("Login realizado. Ambiente local pronto para teste.");
+    });
+  }
+
+  async function signupCompany(event) {
+    event.preventDefault();
+    await runAction(async () => {
+      await api(
+        "/tenants/signup",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...signupForm,
+            document: signupForm.document || null,
+          }),
+        },
+        "",
+      );
+      setEmail(signupForm.admin_email);
+      setPassword("");
+      setSignupForm(emptySignupForm);
+      setAuthMode("login");
+      setMessage("Empresa criada. Entre com o email e senha do admin cadastrado.");
     });
   }
 
@@ -348,11 +380,19 @@ function App() {
         </header>
 
         {!token && (
-          <form className="panel login" onSubmit={login}>
-            <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            <label>Senha<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-            <button type="submit" disabled={loading}>Entrar</button>
-          </form>
+          <AuthPanel
+            authMode={authMode}
+            email={email}
+            loading={loading}
+            login={login}
+            password={password}
+            setAuthMode={setAuthMode}
+            setEmail={setEmail}
+            setPassword={setPassword}
+            setSignupForm={setSignupForm}
+            signupCompany={signupCompany}
+            signupForm={signupForm}
+          />
         )}
 
         {message && <div className={message.startsWith("Erro") ? "notice error" : "notice"}>{message}</div>}
@@ -583,6 +623,53 @@ function SourcesView({
 
       <PreviewPanel preview={preview} selectedSourceId={selectedSourceId} />
     </>
+  );
+}
+
+function AuthPanel({
+  authMode,
+  email,
+  loading,
+  login,
+  password,
+  setAuthMode,
+  setEmail,
+  setPassword,
+  setSignupForm,
+  signupCompany,
+  signupForm,
+}) {
+  return (
+    <section className="panel auth-panel">
+      <div className="segmented">
+        <button className={authMode === "login" ? "active" : "secondary"} onClick={() => setAuthMode("login")} type="button">Entrar</button>
+        <button className={authMode === "signup" ? "active" : "secondary"} onClick={() => setAuthMode("signup")} type="button">Criar empresa</button>
+      </div>
+
+      {authMode === "login" && (
+        <form className="login" onSubmit={login}>
+          <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          <label>Senha<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <button type="submit" disabled={loading}>Entrar</button>
+        </form>
+      )}
+
+      {authMode === "signup" && (
+        <form className="signup-form" onSubmit={signupCompany}>
+          <label>Empresa<input value={signupForm.company_name} onChange={(event) => setSignupForm((current) => ({ ...current, company_name: event.target.value }))} /></label>
+          <label>Documento<input value={signupForm.document} onChange={(event) => setSignupForm((current) => ({ ...current, document: event.target.value }))} placeholder="CNPJ opcional" /></label>
+          <label>Nome do admin<input value={signupForm.admin_name} onChange={(event) => setSignupForm((current) => ({ ...current, admin_name: event.target.value }))} /></label>
+          <label>Email do admin<input value={signupForm.admin_email} onChange={(event) => setSignupForm((current) => ({ ...current, admin_email: event.target.value }))} /></label>
+          <label>Senha do admin<input type="password" value={signupForm.admin_password} onChange={(event) => setSignupForm((current) => ({ ...current, admin_password: event.target.value }))} /></label>
+          <button
+            type="submit"
+            disabled={loading || !signupForm.company_name || !signupForm.admin_name || !signupForm.admin_email || signupForm.admin_password.length < 8}
+          >
+            <Plus size={16} /> Criar empresa e admin
+          </button>
+        </form>
+      )}
+    </section>
   );
 }
 

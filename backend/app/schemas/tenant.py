@@ -12,6 +12,14 @@ class TenantCreate(BaseModel):
     max_alerts: int = 5
 
 
+class TenantSignup(BaseModel):
+    company_name: str
+    document: str | None = None
+    admin_name: str
+    admin_email: str
+    admin_password: str
+
+
 class TenantRead(ORMModel):
     id: int
     name: str

@@ -6,7 +6,7 @@ from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.schemas.tenant import TenantCreate, TenantRead
+from app.schemas.tenant import TenantCreate, TenantRead, TenantSignup
 from app.schemas.user import UserCreate, UserRead
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
@@ -19,6 +19,31 @@ def create_tenant(payload: TenantCreate, db: Session = Depends(get_db)) -> Tenan
     db.commit()
     db.refresh(tenant)
     return tenant
+
+
+@router.post("/signup", response_model=UserRead)
+def signup_company(payload: TenantSignup, db: Session = Depends(get_db)) -> User:
+    if db.query(User).filter(User.email == payload.admin_email).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email ja cadastrado")
+    tenant = Tenant(
+        name=payload.company_name,
+        document=payload.document,
+        plan="free",
+        max_alerts=5,
+    )
+    db.add(tenant)
+    db.flush()
+    user = User(
+        tenant_id=tenant.id,
+        name=payload.admin_name,
+        email=payload.admin_email,
+        hashed_password=hash_password(payload.admin_password),
+        role="admin",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.get("/me", response_model=TenantRead)
