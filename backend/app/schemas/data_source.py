@@ -33,6 +33,11 @@ class DataSourceRead(ORMModel):
     created_at: datetime
 
 
+class ManagedDataSourceCreate(BaseModel):
+    name: str
+    config: dict | None = None
+
+
 class DataSourcePreview(BaseModel):
     columns: list[str]
     rows: list[dict]

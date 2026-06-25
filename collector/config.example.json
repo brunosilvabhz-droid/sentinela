@@ -1,0 +1,9 @@
+{
+  "sentinela_api_url": "http://localhost:8003/api/v1",
+  "agent_token": "sentinela_agent_TOKEN_GERADO_NO_SAAS",
+  "data_source_id": 1,
+  "connection_uri": "postgresql+psycopg://user:pass@localhost:5432/database",
+  "query": "select pedido_id, cliente, valor_total, status from public.pedidos",
+  "primary_key": "pedido_id",
+  "batch_size": 500
+}

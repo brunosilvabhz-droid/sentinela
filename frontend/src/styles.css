@@ -361,6 +361,19 @@ button.danger {
   margin-bottom: 12px;
 }
 
+.token-box {
+  background: #f4f6f8;
+  border: 1px solid #dfe5eb;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.token-box code {
+  overflow-wrap: anywhere;
+}
+
 .preview-table {
   overflow: auto;
 }

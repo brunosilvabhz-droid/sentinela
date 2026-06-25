@@ -66,6 +66,9 @@ function App() {
   const [preview, setPreview] = useState(null);
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [sourceForm, setSourceForm] = useState(emptySourceForm);
+  const [managedSourceName, setManagedSourceName] = useState("Fonte gerenciada pelo collector");
+  const [agentName, setAgentName] = useState("Collector local");
+  const [createdAgentToken, setCreatedAgentToken] = useState("");
   const [uploadForm, setUploadForm] = useState({ name: "Nova fonte CSV", source_type: "csv", file: null });
   const [alertForm, setAlertForm] = useState(emptyAlertForm);
   const [message, setMessage] = useState("");
@@ -150,6 +153,31 @@ function App() {
       setMessage("Fonte de banco cadastrada.");
       await loadWorkspace();
       setActiveTab("sources");
+    });
+  }
+
+  async function createManagedSource(event) {
+    event.preventDefault();
+    await runAction(async () => {
+      await api("/ingestion/sources", {
+        method: "POST",
+        body: JSON.stringify({ name: managedSourceName, config: {} }),
+      });
+      setMessage("Fonte gerenciada criada. Crie um agent e use o collector para enviar dados.");
+      await loadWorkspace();
+      setActiveTab("sources");
+    });
+  }
+
+  async function createAgent(event) {
+    event.preventDefault();
+    await runAction(async () => {
+      const agent = await api("/ingestion/agents", {
+        method: "POST",
+        body: JSON.stringify({ name: agentName }),
+      });
+      setCreatedAgentToken(agent.token);
+      setMessage("Agent criado. Copie o token agora; ele nao sera exibido novamente.");
     });
   }
 
@@ -312,12 +340,19 @@ function App() {
         {token && activeTab === "sources" && (
           <SourcesView
             activeSources={activeSources}
+            agentName={agentName}
+            createAgent={createAgent}
             createDatabaseSource={createDatabaseSource}
+            createManagedSource={createManagedSource}
+            createdAgentToken={createdAgentToken}
             deactivateSource={deactivateSource}
             loading={loading}
+            managedSourceName={managedSourceName}
             preview={preview}
             selectedSourceId={selectedSourceId}
+            setAgentName={setAgentName}
             setAlertForm={setAlertForm}
+            setManagedSourceName={setManagedSourceName}
             setSourceForm={setSourceForm}
             setUploadForm={setUploadForm}
             showPreview={showPreview}
@@ -349,12 +384,19 @@ function App() {
 
 function SourcesView({
   activeSources,
+  agentName,
+  createAgent,
   createDatabaseSource,
+  createManagedSource,
+  createdAgentToken,
   deactivateSource,
   loading,
+  managedSourceName,
   preview,
   selectedSourceId,
+  setAgentName,
   setAlertForm,
+  setManagedSourceName,
   setSourceForm,
   setUploadForm,
   showPreview,
@@ -366,6 +408,32 @@ function SourcesView({
 
   return (
     <>
+      <section className="grid-2">
+        <form className="panel form-grid" onSubmit={createManagedSource}>
+          <div className="panel-title with-action">
+            <h2>Fonte gerenciada</h2>
+            <Shield size={18} />
+          </div>
+          <label>Nome<input value={managedSourceName} onChange={(event) => setManagedSourceName(event.target.value)} /></label>
+          <button disabled={loading || !managedSourceName}><Plus size={16} /> Criar fonte gerenciada</button>
+        </form>
+
+        <form className="panel form-grid" onSubmit={createAgent}>
+          <div className="panel-title with-action">
+            <h2>Collector agent</h2>
+            <Shield size={18} />
+          </div>
+          <label>Nome<input value={agentName} onChange={(event) => setAgentName(event.target.value)} /></label>
+          <button disabled={loading || !agentName}><Plus size={16} /> Criar agent</button>
+          {createdAgentToken && (
+            <div className="token-box">
+              <strong>Token do agent</strong>
+              <code>{createdAgentToken}</code>
+            </div>
+          )}
+        </form>
+      </section>
+
       <section className="grid-2">
         <form className="panel form-grid" onSubmit={uploadSource}>
           <div className="panel-title with-action">

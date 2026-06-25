@@ -138,9 +138,11 @@ Oracle usa `oracledb` em modo thin para conexoes comuns e geralmente nao precisa
 2. Abrir `/docs` da API.
 3. Criar tenant e usuario admin.
 4. Fazer login no frontend.
-5. Criar uma fonte CSV.
-6. Criar e executar um alerta.
-7. Conferir worker e beat nos logs do Render.
-8. Configurar SMTP real.
-9. Configurar Twilio WhatsApp.
-10. Trocar para planos pagos antes de clientes reais.
+5. Criar uma fonte gerenciada.
+6. Criar um collector agent.
+7. Rodar o collector Python em ambiente de teste do cliente.
+8. Criar e executar um alerta sobre dados ingeridos.
+9. Conferir worker e beat nos logs do Render.
+10. Configurar SMTP real.
+11. Configurar Twilio WhatsApp.
+12. Trocar para planos pagos antes de clientes reais.

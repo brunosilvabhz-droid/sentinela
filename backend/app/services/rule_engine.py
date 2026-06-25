@@ -6,6 +6,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.models.alert import Alert, AlertExecution
+from app.models.collector import IngestedRecord
 from app.services.data_loader import load_data_source
 from app.services.notification_service import send_alert_notifications
 
@@ -16,8 +17,13 @@ class RuleResult:
     sample_records: list[dict]
 
 
-def evaluate_alert(alert: Alert) -> RuleResult:
-    dataframe = load_data_source(alert.data_source)
+def evaluate_alert(alert: Alert, db: Session | None = None) -> RuleResult:
+    if alert.data_source.source_type == "managed":
+        if db is None:
+            raise ValueError("Fonte gerenciada exige sessao de banco")
+        dataframe = load_managed_dataframe(db, alert)
+    else:
+        dataframe = load_data_source(alert.data_source)
     if alert.column_name not in dataframe.columns:
         raise ValueError(f"Coluna '{alert.column_name}' nao existe na fonte")
 
@@ -44,7 +50,7 @@ def execute_alert(db: Session, alert: Alert) -> AlertExecution:
     db.refresh(execution)
 
     try:
-        result = evaluate_alert(alert)
+        result = evaluate_alert(alert, db)
         execution.matched_count = result.matched_count
         execution.sample_records = result.sample_records
         if result.matched_count > 0:
@@ -86,3 +92,18 @@ def _build_mask(series: pd.Series, condition: str, threshold):
     if condition == "!=":
         return comparable != threshold
     raise ValueError(f"Condicao nao suportada: {condition}")
+
+
+def load_managed_dataframe(db: Session, alert: Alert) -> pd.DataFrame:
+    rows = (
+        db.query(IngestedRecord.payload)
+        .filter(
+            IngestedRecord.tenant_id == alert.tenant_id,
+            IngestedRecord.data_source_id == alert.data_source_id,
+        )
+        .order_by(IngestedRecord.ingested_at.desc())
+        .limit(100000)
+        .all()
+    )
+    payloads = [row[0] for row in rows]
+    return pd.DataFrame(payloads)

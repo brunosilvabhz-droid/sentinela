@@ -4,8 +4,15 @@ SENTINELA e uma plataforma SaaS multi-tenant para monitoramento de dados, regras
 
 ## Arquitetura
 
+A arquitetura recomendada para producao usa um collector Python instalado no cliente. Ele consulta Oracle, SQL Server, PostgreSQL ou outras fontes dentro da rede do cliente e envia os registros para a SENTINELA. O motor de alertas avalia os dados ja ingeridos no banco da aplicacao.
+
+Veja [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ```text
 sentinela/
+  collector/
+    sentinela_collector.py
+    config.example.json
   backend/
     app/
       api/
@@ -62,9 +69,12 @@ Tabelas:
 
 - `tenants`: empresas/clientes. Campos principais: `id`, `name`, `document`, `plan`, `max_alerts`, `is_active`, `created_at`.
 - `users`: usuarios vinculados ao tenant. Campos: `id`, `tenant_id`, `name`, `email`, `hashed_password`, `role`, `is_active`, `created_at`.
-- `data_sources`: fontes CSV/TXT/Excel/PostgreSQL/Oracle/SQL Server. Campos: `id`, `tenant_id`, `name`, `source_type`, `file_path`, `connection_uri`, `table_name`, `config`, `is_active`, `created_at`.
+- `data_sources`: fontes gerenciadas por collector e fontes diretas CSV/TXT/Excel/PostgreSQL/Oracle/SQL Server. Campos: `id`, `tenant_id`, `name`, `source_type`, `file_path`, `connection_uri`, `table_name`, `config`, `is_active`, `created_at`.
 - `alerts`: regras. Campos: `id`, `tenant_id`, `data_source_id`, `name`, `column_name`, `condition`, `threshold_value`, `frequency`, `recipients`, `channels`, `is_active`, `last_run_at`, `created_at`.
 - `alert_executions`: logs. Campos: `id`, `tenant_id`, `alert_id`, `status`, `matched_count`, `sample_records`, `channels`, `error_message`, `started_at`, `finished_at`, `duration_ms`.
+- `collector_agents`: agentes instalados nos clientes.
+- `ingestion_batches`: lotes recebidos pela API.
+- `ingested_records`: dados normalizados enviados pelos collectors.
 
 Para producao, uma evolucao forte e ativar Row Level Security no PostgreSQL alem do filtro na aplicacao.
 
@@ -99,11 +109,13 @@ admin1234
 1. Criar tenant em `POST /api/v1/tenants`.
 2. Criar usuario admin em `POST /api/v1/tenants/{tenant_id}/users`.
 3. Fazer login em `POST /api/v1/auth/login`.
-4. Criar fonte em `POST /api/v1/data-sources` ou enviar arquivo em `POST /api/v1/data-sources/upload`.
-5. Criar alerta em `POST /api/v1/alerts`.
-6. Executar manualmente em `POST /api/v1/alerts/{alert_id}/run` ou deixar o Celery Beat disparar.
-7. Consultar logs em `GET /api/v1/alerts/{alert_id}/executions`.
-8. Consultar indicadores em `GET /api/v1/dashboard/summary`.
+4. Criar fonte gerenciada em `POST /api/v1/ingestion/sources`.
+5. Criar agent em `POST /api/v1/ingestion/agents`.
+6. Instalar o collector no cliente e enviar dados para `POST /api/v1/ingestion/batches`.
+7. Criar alerta em `POST /api/v1/alerts`.
+8. Executar manualmente em `POST /api/v1/alerts/{alert_id}/run` ou deixar o Celery Beat disparar.
+9. Consultar logs em `GET /api/v1/alerts/{alert_id}/executions`.
+10. Consultar indicadores em `GET /api/v1/dashboard/summary`.
 
 ## Exemplo de Alerta
 

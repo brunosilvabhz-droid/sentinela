@@ -36,6 +36,20 @@ def preview_data_source(
     )
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fonte nao encontrada")
+    if data_source.source_type == "managed":
+        from app.models.collector import IngestedRecord
+
+        records = (
+            db.query(IngestedRecord.payload)
+            .filter(IngestedRecord.tenant_id == current_user.tenant_id, IngestedRecord.data_source_id == data_source.id)
+            .order_by(IngestedRecord.ingested_at.desc())
+            .limit(20)
+            .all()
+        )
+        rows = [record[0] for record in records]
+        columns = sorted({key for row in rows for key in row.keys()})
+        return DataSourcePreview(columns=columns, rows=rows, total_preview_rows=len(rows))
+
     dataframe = load_data_source(data_source)
     preview = dataframe.head(20)
     return DataSourcePreview(
