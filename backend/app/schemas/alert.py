@@ -47,6 +47,7 @@ class AlertExecutionRead(ORMModel):
     id: int
     tenant_id: int
     alert_id: int
+    occurrence_id: int | None = None
     status: str
     matched_count: int
     sample_records: list | None
@@ -59,3 +60,56 @@ class AlertExecutionRead(ORMModel):
 
 class AlertExecutionWithAlertRead(AlertExecutionRead):
     alert_name: str
+
+
+class AlertOccurrenceRead(ORMModel):
+    id: int
+    tenant_id: int
+    alert_id: int
+    fingerprint: str
+    status: str
+    matched_count: int
+    sample_records: list | None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    acknowledged_at: datetime | None
+    resolved_at: datetime | None
+    alert_name: str | None = None
+
+
+class AlertAcknowledgementCreate(BaseModel):
+    acknowledged_by_name: str | None = None
+    acknowledged_by_email: str | None = None
+    note: str | None = None
+
+
+class AlertAcknowledgementRead(ORMModel):
+    id: int
+    tenant_id: int
+    alert_id: int
+    occurrence_id: int
+    acknowledged_by_name: str | None
+    acknowledged_by_email: str | None
+    note: str | None
+    acknowledged_at: datetime
+    alert_name: str | None = None
+
+
+class AlertAuditLogRead(ORMModel):
+    id: int
+    tenant_id: int
+    alert_id: int
+    user_id: int | None
+    action: str
+    before: dict | None
+    after: dict | None
+    created_at: datetime
+    alert_name: str | None = None
+
+
+class PublicAlertOccurrenceRead(BaseModel):
+    alert_name: str
+    source_name: str
+    status: str
+    matched_count: int
+    sample_records: list | None

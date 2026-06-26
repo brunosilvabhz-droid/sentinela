@@ -48,6 +48,13 @@ button.secondary {
   min-height: 100vh;
 }
 
+.ack-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
 .sidebar {
   background: #101820;
   color: #eef4f8;
@@ -325,6 +332,18 @@ label.inline input {
   grid-template-columns: 1.2fr 120px 120px 220px minmax(180px, 1fr);
 }
 
+.occurrences-head,
+.occurrences-row,
+.acknowledgements-head,
+.acknowledgements-row {
+  grid-template-columns: 1.2fr 120px 120px 220px minmax(180px, 1fr);
+}
+
+.audit-head,
+.audit-row {
+  grid-template-columns: 1.4fr 120px 120px 220px;
+}
+
 .users-head,
 .users-row {
   grid-template-columns: 1fr 1.4fr 120px 120px;
@@ -407,6 +426,28 @@ button.danger {
 .badge.no_match {
   background: #eef2f7;
   color: #4b5965;
+}
+
+.badge.suppressed,
+.badge.acknowledged {
+  background: #fff8e1;
+  color: #8a5a00;
+}
+
+.badge.open {
+  background: #e8f1ff;
+  color: #1f4f99;
+}
+
+.badge.resolved {
+  background: #e9f7ef;
+  color: #1e6b3c;
+}
+
+.ack-summary {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .preview-meta {
@@ -517,6 +558,12 @@ th {
   .alert-list-row,
   .history-head,
   .history-row,
+  .occurrences-head,
+  .occurrences-row,
+  .acknowledgements-head,
+  .acknowledgements-row,
+  .audit-head,
+  .audit-row,
   .users-head,
   .users-row,
   .companies-head,

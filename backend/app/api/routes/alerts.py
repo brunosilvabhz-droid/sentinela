@@ -3,10 +3,23 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
 from app.db.session import get_db
-from app.models.alert import Alert, AlertExecution
+from datetime import datetime, timezone
+
+from app.models.alert import Alert, AlertAcknowledgement, AlertAuditLog, AlertExecution, AlertOccurrence
 from app.models.data_source import DataSource
 from app.models.user import User
-from app.schemas.alert import AlertCreate, AlertExecutionRead, AlertExecutionWithAlertRead, AlertRead, AlertUpdate
+from app.schemas.alert import (
+    AlertAcknowledgementCreate,
+    AlertAcknowledgementRead,
+    AlertAuditLogRead,
+    AlertCreate,
+    AlertExecutionRead,
+    AlertExecutionWithAlertRead,
+    AlertOccurrenceRead,
+    AlertRead,
+    AlertUpdate,
+    PublicAlertOccurrenceRead,
+)
 from app.services.rule_engine import execute_alert
 from app.services.tenant_limits import assert_can_create_alert
 
@@ -76,6 +89,8 @@ def create_alert(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe ao menos um canal valido")
     alert = Alert(tenant_id=target_tenant_id, **payload.model_dump())
     db.add(alert)
+    db.flush()
+    add_alert_audit(db, alert, current_user.id, "created", None, alert_snapshot(alert))
     db.commit()
     db.refresh(alert)
     return alert
@@ -92,7 +107,9 @@ def delete_alert(
     alert = db.query(Alert).filter(Alert.id == alert_id, Alert.tenant_id == target_tenant_id).first()
     if not alert:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta nao encontrado")
+    before = alert_snapshot(alert)
     alert.is_active = False
+    add_alert_audit(db, alert, current_user.id, "deactivated", before, alert_snapshot(alert))
     db.commit()
     db.refresh(alert)
     return alert
@@ -110,8 +127,10 @@ def update_alert(
     alert = db.query(Alert).filter(Alert.id == alert_id, Alert.tenant_id == target_tenant_id).first()
     if not alert:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta nao encontrado")
+    before = alert_snapshot(alert)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(alert, key, value)
+    add_alert_audit(db, alert, current_user.id, "updated", before, alert_snapshot(alert))
     db.commit()
     db.refresh(alert)
     return alert
@@ -148,9 +167,144 @@ def list_alert_executions(
     )
 
 
+@router.get("/occurrences", response_model=list[AlertOccurrenceRead])
+def list_alert_occurrences(
+    tenant_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    target_tenant_id = resolve_tenant_id(current_user, tenant_id)
+    rows = (
+        db.query(AlertOccurrence, Alert.name)
+        .join(Alert, Alert.id == AlertOccurrence.alert_id)
+        .filter(AlertOccurrence.tenant_id == target_tenant_id)
+        .order_by(AlertOccurrence.last_seen_at.desc())
+        .limit(100)
+        .all()
+    )
+    return [{**occurrence.__dict__, "alert_name": alert_name} for occurrence, alert_name in rows]
+
+
+@router.get("/acknowledgements", response_model=list[AlertAcknowledgementRead])
+def list_alert_acknowledgements(
+    tenant_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    target_tenant_id = resolve_tenant_id(current_user, tenant_id)
+    rows = (
+        db.query(AlertAcknowledgement, Alert.name)
+        .join(Alert, Alert.id == AlertAcknowledgement.alert_id)
+        .filter(AlertAcknowledgement.tenant_id == target_tenant_id)
+        .order_by(AlertAcknowledgement.acknowledged_at.desc())
+        .limit(100)
+        .all()
+    )
+    return [{**ack.__dict__, "alert_name": alert_name} for ack, alert_name in rows]
+
+
+@router.get("/audit-logs", response_model=list[AlertAuditLogRead])
+def list_alert_audit_logs(
+    tenant_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> list[dict]:
+    target_tenant_id = resolve_tenant_id(current_user, tenant_id)
+    rows = (
+        db.query(AlertAuditLog, Alert.name)
+        .join(Alert, Alert.id == AlertAuditLog.alert_id)
+        .filter(AlertAuditLog.tenant_id == target_tenant_id)
+        .order_by(AlertAuditLog.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    return [{**log.__dict__, "alert_name": alert_name} for log, alert_name in rows]
+
+
+@router.get("/ack/{token}", response_model=PublicAlertOccurrenceRead)
+def read_public_acknowledgement(
+    token: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    occurrence = get_occurrence_by_token(db, token)
+    return {
+        "alert_name": occurrence.alert.name,
+        "source_name": occurrence.alert.data_source.name,
+        "status": occurrence.status,
+        "matched_count": occurrence.matched_count,
+        "sample_records": occurrence.sample_records,
+    }
+
+
+@router.post("/ack/{token}", response_model=AlertAcknowledgementRead)
+def confirm_public_acknowledgement(
+    token: str,
+    payload: AlertAcknowledgementCreate,
+    db: Session = Depends(get_db),
+) -> AlertAcknowledgement:
+    occurrence = get_occurrence_by_token(db, token)
+    now = datetime.now(timezone.utc)
+    occurrence.status = "acknowledged"
+    occurrence.acknowledged_at = now
+    acknowledgement = AlertAcknowledgement(
+        tenant_id=occurrence.tenant_id,
+        alert_id=occurrence.alert_id,
+        occurrence_id=occurrence.id,
+        acknowledged_by_name=payload.acknowledged_by_name,
+        acknowledged_by_email=payload.acknowledged_by_email,
+        note=payload.note,
+        acknowledged_at=now,
+    )
+    db.add(acknowledgement)
+    db.commit()
+    db.refresh(acknowledgement)
+    return acknowledgement
+
+
 def resolve_tenant_id(current_user: User, tenant_id: int | None) -> int:
     if current_user.role == "super_admin":
         if tenant_id is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tenant_id e obrigatorio para admin geral")
         return tenant_id
     return current_user.tenant_id
+
+
+def get_occurrence_by_token(db: Session, token: str) -> AlertOccurrence:
+    occurrence = db.query(AlertOccurrence).filter(AlertOccurrence.ack_token == token).first()
+    if not occurrence:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Confirmacao nao encontrada")
+    return occurrence
+
+
+def alert_snapshot(alert: Alert) -> dict:
+    return {
+        "name": alert.name,
+        "data_source_id": alert.data_source_id,
+        "column_name": alert.column_name,
+        "condition": alert.condition,
+        "threshold_value": alert.threshold_value,
+        "frequency": alert.frequency,
+        "recipients": alert.recipients,
+        "channels": alert.channels,
+        "is_active": alert.is_active,
+    }
+
+
+def add_alert_audit(
+    db: Session,
+    alert: Alert,
+    user_id: int | None,
+    action: str,
+    before: dict | None,
+    after: dict | None,
+) -> None:
+    db.add(
+        AlertAuditLog(
+            tenant_id=alert.tenant_id,
+            alert_id=alert.id,
+            user_id=user_id,
+            action=action,
+            before=before,
+            after=after,
+        )
+    )

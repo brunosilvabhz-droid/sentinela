@@ -1,5 +1,5 @@
 from app.db.session import Base
-from app.models.alert import Alert, AlertExecution
+from app.models.alert import Alert, AlertAcknowledgement, AlertAuditLog, AlertExecution, AlertOccurrence
 from app.models.collector import CollectorAgent, IngestedAttribute, IngestedRecord, IngestionBatch
 from app.models.data_source import DataSource
 from app.models.tenant import Tenant

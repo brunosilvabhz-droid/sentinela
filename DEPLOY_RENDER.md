@@ -37,6 +37,7 @@ O `render.yaml` ja conecta automaticamente:
 DATABASE_URL -> sentinela-db
 REDIS_URL    -> sentinela-redis
 JWT_SECRET_KEY -> gerado automaticamente
+FRONTEND_PUBLIC_URL -> https://sentinela-web.onrender.com
 ```
 
 Configure manualmente se quiser email/WhatsApp em producao:
@@ -64,6 +65,7 @@ Se o Render gerar outro subdominio para a API, ajuste `VITE_API_URL` no servico 
 
 ```text
 CORS_ALLOWED_ORIGINS=https://SEU-FRONTEND.onrender.com
+FRONTEND_PUBLIC_URL=https://SEU-FRONTEND.onrender.com
 ```
 
 no servico `sentinela-api`.

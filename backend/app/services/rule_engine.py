@@ -1,11 +1,14 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
+import json
+import secrets
 from time import perf_counter
 
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from app.models.alert import Alert, AlertExecution
+from app.models.alert import Alert, AlertExecution, AlertOccurrence
 from app.models.collector import IngestedRecord
 from app.services.data_loader import load_data_source
 from app.services.notification_service import send_alert_notifications
@@ -15,6 +18,7 @@ from app.services.notification_service import send_alert_notifications
 class RuleResult:
     matched_count: int
     sample_records: list[dict]
+    fingerprint: str
 
 
 def evaluate_alert(alert: Alert, db: Session | None = None) -> RuleResult:
@@ -31,9 +35,11 @@ def evaluate_alert(alert: Alert, db: Session | None = None) -> RuleResult:
     threshold = _coerce_threshold(series, alert.threshold_value)
     mask = _build_mask(series, alert.condition, threshold)
     matches = dataframe[mask]
+    matched_records = matches.where(pd.notnull(matches), None).to_dict(orient="records")
     return RuleResult(
         matched_count=int(len(matches)),
-        sample_records=matches.head(10).where(pd.notnull(matches), None).to_dict(orient="records"),
+        sample_records=matched_records[:10],
+        fingerprint=_fingerprint_records(matched_records),
     )
 
 
@@ -54,9 +60,15 @@ def execute_alert(db: Session, alert: Alert) -> AlertExecution:
         execution.matched_count = result.matched_count
         execution.sample_records = result.sample_records
         if result.matched_count > 0:
-            send_alert_notifications(alert, result)
-            execution.status = "sent"
+            occurrence = _get_or_create_occurrence(db, alert, result)
+            execution.occurrence_id = occurrence.id
+            if occurrence.status in {"acknowledged", "open"} and occurrence.first_seen_at != occurrence.last_seen_at:
+                execution.status = "suppressed"
+            else:
+                send_alert_notifications(alert, result, occurrence)
+                execution.status = "sent"
         else:
+            _resolve_open_occurrences(db, alert)
             execution.status = "no_match"
         alert.last_run_at = datetime.now(timezone.utc)
     except Exception as exc:  # noqa: BLE001
@@ -68,6 +80,62 @@ def execute_alert(db: Session, alert: Alert) -> AlertExecution:
         db.commit()
         db.refresh(execution)
     return execution
+
+
+def _get_or_create_occurrence(db: Session, alert: Alert, result: RuleResult) -> AlertOccurrence:
+    now = datetime.now(timezone.utc)
+    occurrence = (
+        db.query(AlertOccurrence)
+        .filter(
+            AlertOccurrence.tenant_id == alert.tenant_id,
+            AlertOccurrence.alert_id == alert.id,
+            AlertOccurrence.fingerprint == result.fingerprint,
+            AlertOccurrence.status.in_(["open", "acknowledged"]),
+        )
+        .first()
+    )
+    if occurrence:
+        occurrence.last_seen_at = now
+        occurrence.matched_count = result.matched_count
+        occurrence.sample_records = result.sample_records
+        db.flush()
+        return occurrence
+
+    occurrence = AlertOccurrence(
+        tenant_id=alert.tenant_id,
+        alert_id=alert.id,
+        fingerprint=result.fingerprint,
+        ack_token=secrets.token_urlsafe(32),
+        status="open",
+        matched_count=result.matched_count,
+        sample_records=result.sample_records,
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    db.add(occurrence)
+    db.flush()
+    return occurrence
+
+
+def _resolve_open_occurrences(db: Session, alert: Alert) -> None:
+    now = datetime.now(timezone.utc)
+    occurrences = (
+        db.query(AlertOccurrence)
+        .filter(
+            AlertOccurrence.tenant_id == alert.tenant_id,
+            AlertOccurrence.alert_id == alert.id,
+            AlertOccurrence.status == "open",
+        )
+        .all()
+    )
+    for occurrence in occurrences:
+        occurrence.status = "resolved"
+        occurrence.resolved_at = now
+
+
+def _fingerprint_records(records: list[dict]) -> str:
+    canonical = json.dumps(records, sort_keys=True, default=str, ensure_ascii=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _coerce_threshold(series: pd.Series, value: str):

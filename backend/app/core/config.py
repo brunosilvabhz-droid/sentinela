@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://sentinela:sentinela@localhost:5432/sentinela"
     redis_url: str = "redis://localhost:6379/0"
     cors_allowed_origins: str = ""
+    frontend_public_url: str = "http://localhost:5180"
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60

@@ -75,6 +75,7 @@ const emptySignupForm = {
 };
 
 function App() {
+  const ackToken = getAckTokenFromPath();
   const [token, setToken] = useState(() => localStorage.getItem("sentinela_token") || "");
   const [email, setEmail] = useState("superadmin@sentinela.com.br");
   const [password, setPassword] = useState("superadmin123");
@@ -84,6 +85,9 @@ function App() {
   const [sources, setSources] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [executions, setExecutions] = useState([]);
+  const [occurrences, setOccurrences] = useState([]);
+  const [acknowledgements, setAcknowledgements] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [users, setUsers] = useState([]);
   const [agents, setAgents] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -120,6 +124,10 @@ function App() {
       setAlertForm((current) => ({ ...current, data_source_id: String(activeSources[0].id) }));
     }
   }, [activeSources, alertForm.data_source_id]);
+
+  if (ackToken) {
+    return <AcknowledgementPage ackToken={ackToken} />;
+  }
 
   async function api(path, options = {}, authToken = token) {
     const headers = {
@@ -179,6 +187,9 @@ function App() {
     let sourceList = [];
     let alertList = [];
     let executionList = [];
+    let occurrenceList = [];
+    let acknowledgementList = [];
+    let auditLogList = [];
     let dashboard = { sent_alerts: 0, active_alerts: 0, inactive_alerts: 0, executions_by_status: {} };
     let targetTenantId = tenantOverride;
     const isSuper = me.role === "super_admin";
@@ -197,6 +208,13 @@ function App() {
         me.role !== "user" ? api(`/alerts${tenantQuery}`, {}, authToken) : Promise.resolve([]),
         api(`/alerts/executions${tenantQuery}`, {}, authToken),
       ]);
+      [occurrenceList, acknowledgementList] = await Promise.all([
+        api(`/alerts/occurrences${tenantQuery}`, {}, authToken),
+        api(`/alerts/acknowledgements${tenantQuery}`, {}, authToken),
+      ]);
+      if (me.role !== "user") {
+        auditLogList = await api(`/alerts/audit-logs${tenantQuery}`, {}, authToken);
+      }
     }
     if (me.role === "admin") {
       userList = await api("/users", {}, authToken);
@@ -209,6 +227,9 @@ function App() {
     setSources(sourceList);
     setAlerts(alertList);
     setExecutions(executionList);
+    setOccurrences(occurrenceList);
+    setAcknowledgements(acknowledgementList);
+    setAuditLogs(auditLogList);
     setUsers(userList);
     setAgents(agentList);
     setTenants(tenantList);
@@ -386,6 +407,9 @@ function App() {
     setSources([]);
     setAlerts([]);
     setExecutions([]);
+    setOccurrences([]);
+    setAcknowledgements([]);
+    setAuditLogs([]);
     setUsers([]);
     setAgents([]);
     setTenants([]);
@@ -524,7 +548,14 @@ function App() {
           />
         )}
 
-        {token && activeTab === "history" && <HistoryView executions={executions} />}
+        {token && activeTab === "history" && (
+          <HistoryView
+            acknowledgements={acknowledgements}
+            auditLogs={auditLogs}
+            executions={executions}
+            occurrences={occurrences}
+          />
+        )}
         {token && canManageTenant && activeTab === "users" && (
           <UsersView
             createUser={createUser}
@@ -859,24 +890,142 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
   );
 }
 
-function HistoryView({ executions }) {
+function HistoryView({ acknowledgements, auditLogs, executions, occurrences }) {
   return (
-    <section className="panel">
-      <div className="panel-title"><h2>Historico de execucoes</h2></div>
-      <div className="table">
-        <div className="row history-head"><span>Alerta</span><span>Status</span><span>Registros</span><span>Inicio</span><span>Erro</span></div>
-        {executions.map((execution) => (
-          <div className="row history-row" key={execution.id}>
-            <span>{execution.alert_name}</span>
-            <span><StatusBadge status={execution.status} /></span>
-            <span>{execution.matched_count}</span>
-            <span>{new Date(execution.started_at).toLocaleString("pt-BR")}</span>
-            <span>{execution.error_message || "-"}</span>
+    <>
+      <section className="panel">
+        <div className="panel-title"><h2>Historico de execucoes</h2></div>
+        <div className="table">
+          <div className="row history-head"><span>Alerta</span><span>Status</span><span>Registros</span><span>Inicio</span><span>Erro</span></div>
+          {executions.map((execution) => (
+            <div className="row history-row" key={execution.id}>
+              <span>{execution.alert_name}</span>
+              <span><StatusBadge status={execution.status} /></span>
+              <span>{execution.matched_count}</span>
+              <span>{new Date(execution.started_at).toLocaleString("pt-BR")}</span>
+              <span>{execution.error_message || "-"}</span>
+            </div>
+          ))}
+          {executions.length === 0 && <div className="empty">Nenhuma execucao registrada.</div>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title"><h2>Ocorrencias de alertas</h2></div>
+        <div className="table">
+          <div className="row occurrences-head"><span>Alerta</span><span>Status</span><span>Registros</span><span>Visto em</span><span>Confirmado</span></div>
+          {occurrences.map((occurrence) => (
+            <div className="row occurrences-row" key={occurrence.id}>
+              <span>{occurrence.alert_name}</span>
+              <span><StatusBadge status={occurrence.status} /></span>
+              <span>{occurrence.matched_count}</span>
+              <span>{new Date(occurrence.last_seen_at).toLocaleString("pt-BR")}</span>
+              <span>{occurrence.acknowledged_at ? new Date(occurrence.acknowledged_at).toLocaleString("pt-BR") : "-"}</span>
+            </div>
+          ))}
+          {occurrences.length === 0 && <div className="empty">Nenhuma ocorrencia registrada.</div>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title"><h2>Confirmacoes de leitura</h2></div>
+        <div className="table">
+          <div className="row acknowledgements-head"><span>Alerta</span><span>Nome</span><span>Email</span><span>Data</span><span>Observacao</span></div>
+          {acknowledgements.map((ack) => (
+            <div className="row acknowledgements-row" key={ack.id}>
+              <span>{ack.alert_name}</span>
+              <span>{ack.acknowledged_by_name || "-"}</span>
+              <span>{ack.acknowledged_by_email || "-"}</span>
+              <span>{new Date(ack.acknowledged_at).toLocaleString("pt-BR")}</span>
+              <span>{ack.note || "-"}</span>
+            </div>
+          ))}
+          {acknowledgements.length === 0 && <div className="empty">Nenhuma leitura confirmada.</div>}
+        </div>
+      </section>
+
+      {auditLogs.length > 0 && (
+        <section className="panel">
+          <div className="panel-title"><h2>Auditoria de alertas</h2></div>
+          <div className="table">
+            <div className="row audit-head"><span>Alerta</span><span>Acao</span><span>Usuario</span><span>Data</span></div>
+            {auditLogs.map((log) => (
+              <div className="row audit-row" key={log.id}>
+                <span>{log.alert_name}</span>
+                <span>{log.action}</span>
+                <span>{log.user_id || "-"}</span>
+                <span>{new Date(log.created_at).toLocaleString("pt-BR")}</span>
+              </div>
+            ))}
           </div>
-        ))}
-        {executions.length === 0 && <div className="empty">Nenhuma execucao registrada.</div>}
-      </div>
-    </section>
+        </section>
+      )}
+    </>
+  );
+}
+
+function AcknowledgementPage({ ackToken }) {
+  const [occurrence, setOccurrence] = useState(null);
+  const [form, setForm] = useState({ acknowledged_by_name: "", acknowledged_by_email: "", note: "" });
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_URL}/alerts/ack/${ackToken}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then(setOccurrence)
+      .catch(() => setMessage("Confirmacao nao encontrada."));
+  }, [ackToken]);
+
+  async function confirm(event) {
+    event.preventDefault();
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${API_URL}/alerts/ack/${ackToken}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          acknowledged_by_name: form.acknowledged_by_name || null,
+          acknowledged_by_email: form.acknowledged_by_email || null,
+          note: form.note || null,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Nao foi possivel confirmar a leitura.");
+      }
+      setMessage("Leitura confirmada. O mesmo alerta nao sera reenviado enquanto a ocorrencia nao mudar.");
+      setOccurrence((current) => current ? { ...current, status: "acknowledged" } : current);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="ack-shell">
+      <section className="panel auth-panel">
+        <div className="panel-title"><h2>Confirmar leitura do alerta</h2></div>
+        {occurrence && (
+          <div className="ack-summary">
+            <p><strong>{occurrence.alert_name}</strong></p>
+            <p>Fonte: {occurrence.source_name}</p>
+            <p>Status: {occurrence.status}</p>
+            <p>Registros encontrados: {occurrence.matched_count}</p>
+          </div>
+        )}
+        {message && <div className={message.startsWith("Confirmacao") || message.startsWith("Nao") ? "notice error" : "notice"}>{message}</div>}
+        {occurrence && occurrence.status !== "acknowledged" && (
+          <form className="login" onSubmit={confirm}>
+            <label>Nome<input value={form.acknowledged_by_name} onChange={(event) => setForm((current) => ({ ...current, acknowledged_by_name: event.target.value }))} /></label>
+            <label>Email<input value={form.acknowledged_by_email} onChange={(event) => setForm((current) => ({ ...current, acknowledged_by_email: event.target.value }))} /></label>
+            <label>Observacao<input value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} /></label>
+            <button disabled={loading} type="submit">Confirmar leitura</button>
+          </form>
+        )}
+      </section>
+    </main>
   );
 }
 

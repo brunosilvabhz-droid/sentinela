@@ -4,15 +4,18 @@ from email.message import EmailMessage
 from twilio.rest import Client
 
 from app.core.config import get_settings
-from app.models.alert import Alert
+from app.models.alert import Alert, AlertOccurrence
 
 
-def send_alert_notifications(alert: Alert, result) -> None:
+def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence) -> None:
+    settings = get_settings()
+    acknowledgement_url = f"{settings.frontend_public_url.rstrip('/')}/ack/{occurrence.ack_token}"
     subject = f"[SENTINELA] Alerta disparado: {alert.name}"
     body = (
         f"O alerta '{alert.name}' encontrou {result.matched_count} registro(s).\n"
         f"Fonte: {alert.data_source.name}\n"
         f"Regra: {alert.column_name} {alert.condition} {alert.threshold_value}\n"
+        f"Confirmar leitura: {acknowledgement_url}\n"
         f"Amostra: {result.sample_records[:3]}"
     )
     if "email" in alert.channels:
