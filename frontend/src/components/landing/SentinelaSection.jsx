@@ -1,5 +1,4 @@
 import { CheckCircle2, LogIn, MessageCircle } from "lucide-react";
-import { SENTINELA_LOGIN_URL, WHATSAPP_URL } from "../../constants";
 
 const features = [
   "Monitoramento de Excel, CSV, bancos de dados e APIs",
@@ -10,7 +9,7 @@ const features = [
   "Ambiente multiempresa",
 ];
 
-export default function SentinelaSection() {
+export default function SentinelaSection({ content }) {
   return (
     <section id="sentinela" className="bg-slate-950 py-20 text-white">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[1fr_0.9fr] lg:px-8">
@@ -21,10 +20,10 @@ export default function SentinelaSection() {
             O SENTINELA é a plataforma da IMPACTO para monitorar dados, regras e processos críticos. Ele identifica exceções, dispara alertas automáticos e mantém o histórico das ocorrências.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <a className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-500 px-6 py-3 font-bold text-white transition hover:-translate-y-1 hover:bg-emerald-400" href={SENTINELA_LOGIN_URL}>
+            <a className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-500 px-6 py-3 font-bold text-white transition hover:-translate-y-1 hover:bg-emerald-400" href={content.sentinelaLoginUrl}>
               <LogIn size={18} /> Acessar SENTINELA
             </a>
-            <a className="inline-flex items-center justify-center gap-2 rounded-md border border-white/20 px-6 py-3 font-bold text-white transition hover:-translate-y-1 hover:border-amber-300 hover:text-amber-200" href={WHATSAPP_URL} rel="noreferrer" target="_blank">
+            <a className="inline-flex items-center justify-center gap-2 rounded-md border border-white/20 px-6 py-3 font-bold text-white transition hover:-translate-y-1 hover:border-amber-300 hover:text-amber-200" href={content.whatsappUrl} rel="noreferrer" target="_blank">
               <MessageCircle size={18} /> Quero conhecer
             </a>
           </div>

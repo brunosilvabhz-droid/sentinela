@@ -491,6 +491,10 @@ table {
   width: 100%;
 }
 
+.landing-admin button {
+  min-height: auto;
+}
+
 th,
 td {
   border-bottom: 1px solid #edf1f5;

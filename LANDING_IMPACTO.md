@@ -35,6 +35,7 @@ frontend/
 /      Landing page IMPACTO
 /app   Console local do SENTINELA
 /ack   Confirmação pública de leitura de alerta
+/landing-admin   Editor simples da landing para super-admin
 ```
 
 ## Constantes
@@ -58,6 +59,20 @@ Localmente, `frontend/.env.local` usa:
 ```text
 VITE_SENTINELA_LOGIN_URL=/app
 ```
+
+## Editor da Landing
+
+A rota `/landing-admin` permite editar:
+
+- Logo do cabeçalho
+- Imagem de fundo do hero
+- Título e subtítulo
+- Etiqueta do hero
+- URL do WhatsApp
+- URL de login do SENTINELA
+- Cards de métricas do hero
+
+Nesta versão, os dados são salvos no `localStorage` do navegador. Isso é útil para validar o fluxo de edição rapidamente. Para produção multiusuário, o próximo passo recomendado é persistir esse conteúdo no backend e restringir a rota ao `super_admin`.
 
 ## Instalação
 
