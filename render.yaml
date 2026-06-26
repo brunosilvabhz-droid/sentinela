@@ -124,6 +124,8 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://sentinela-api.onrender.com/api/v1
+      - key: VITE_SENTINELA_LOGIN_URL
+        value: https://app.impactocg.com/login
     routes:
       - type: rewrite
         source: /*
