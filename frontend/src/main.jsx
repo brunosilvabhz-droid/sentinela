@@ -13,6 +13,7 @@ import {
   RefreshCcw,
   Shield,
   Trash2,
+  Building2,
   Users,
 } from "lucide-react";
 import "./styles.css";
@@ -65,6 +66,9 @@ const emptyUserForm = {
 const emptySignupForm = {
   company_name: "",
   document: "",
+  plan: "free",
+  max_sources: 3,
+  max_alerts: 5,
   admin_name: "",
   admin_email: "",
   admin_password: "",
@@ -72,9 +76,8 @@ const emptySignupForm = {
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem("sentinela_token") || "");
-  const [email, setEmail] = useState("admin@demo.com");
-  const [password, setPassword] = useState("admin1234");
-  const [authMode, setAuthMode] = useState("login");
+  const [email, setEmail] = useState("superadmin@sentinela.com.br");
+  const [password, setPassword] = useState("superadmin123");
   const [signupForm, setSignupForm] = useState(emptySignupForm);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [summary, setSummary] = useState(null);
@@ -83,8 +86,11 @@ function App() {
   const [executions, setExecutions] = useState([]);
   const [users, setUsers] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [sourceAttributes, setSourceAttributes] = useState([]);
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [sourceForm, setSourceForm] = useState(emptySourceForm);
   const [managedSourceName, setManagedSourceName] = useState("Fonte gerenciada pelo collector");
@@ -99,7 +105,9 @@ function App() {
 
   const activeSources = useMemo(() => sources.filter((source) => source.is_active), [sources]);
   const activeAlerts = useMemo(() => alerts.filter((alert) => alert.is_active), [alerts]);
-  const isAdmin = currentUser?.role === "admin";
+  const isPlatformAdmin = currentUser?.role === "super_admin";
+  const isTenantAdmin = currentUser?.role === "admin";
+  const canManageTenant = isTenantAdmin;
 
   useEffect(() => {
     if (token) {
@@ -156,27 +164,46 @@ function App() {
             document: signupForm.document || null,
           }),
         },
-        "",
       );
-      setEmail(signupForm.admin_email);
-      setPassword("");
       setSignupForm(emptySignupForm);
-      setAuthMode("login");
-      setMessage("Empresa criada. Entre com o email e senha do admin cadastrado.");
+      setMessage("Empresa e admin criados.");
+      await loadWorkspace();
     });
   }
 
-  async function loadWorkspace(authToken = token) {
+  async function loadWorkspace(authToken = token, tenantOverride = selectedTenantId) {
     const me = await api("/users/me", {}, authToken);
-    const [dashboard, sourceList, alertList, executionList] = await Promise.all([
-      api("/dashboard/summary", {}, authToken),
-      api("/data-sources", {}, authToken),
-      api("/alerts", {}, authToken),
-      api("/alerts/executions", {}, authToken),
-    ]);
-    const [userList, agentList] = me.role === "admin"
-      ? await Promise.all([api("/users", {}, authToken), api("/ingestion/agents", {}, authToken)])
-      : [[], []];
+    let userList = [];
+    let agentList = [];
+    let tenantList = [];
+    let sourceList = [];
+    let alertList = [];
+    let executionList = [];
+    let dashboard = { sent_alerts: 0, active_alerts: 0, inactive_alerts: 0, executions_by_status: {} };
+    let targetTenantId = tenantOverride;
+    const isSuper = me.role === "super_admin";
+    if (isSuper) {
+      tenantList = await api("/tenants", {}, authToken);
+      targetTenantId = targetTenantId || String(tenantList.find((tenant) => tenant.document !== "SENTINELA")?.id || tenantList[0]?.id || "");
+      setSelectedTenantId(targetTenantId);
+    }
+    const tenantQuery = isSuper && targetTenantId ? `?tenant_id=${targetTenantId}` : "";
+    if (me.role !== "user" && (!isSuper || targetTenantId)) {
+      sourceList = await api(`/data-sources${tenantQuery}`, {}, authToken);
+    }
+    if (!isSuper || targetTenantId) {
+      [dashboard, alertList, executionList] = await Promise.all([
+        api(`/dashboard/summary${tenantQuery}`, {}, authToken),
+        me.role !== "user" ? api(`/alerts${tenantQuery}`, {}, authToken) : Promise.resolve([]),
+        api(`/alerts/executions${tenantQuery}`, {}, authToken),
+      ]);
+    }
+    if (me.role === "admin") {
+      userList = await api("/users", {}, authToken);
+    }
+    if (isSuper && targetTenantId) {
+      agentList = await api(`/ingestion/agents?tenant_id=${targetTenantId}`, {}, authToken);
+    }
     setCurrentUser(me);
     setSummary(dashboard);
     setSources(sourceList);
@@ -184,8 +211,18 @@ function App() {
     setExecutions(executionList);
     setUsers(userList);
     setAgents(agentList);
-    if (me.role !== "admin" && ["sources", "users"].includes(activeTab)) {
+    setTenants(tenantList);
+    if (me.role !== "super_admin" && activeTab === "sources") {
       setActiveTab("dashboard");
+    }
+    if (me.role !== "admin" && activeTab === "users") {
+      setActiveTab("dashboard");
+    }
+    if (me.role !== "super_admin" && activeTab === "companies") {
+      setActiveTab("dashboard");
+    }
+    if (me.role === "user" && activeTab !== "dashboard" && activeTab !== "history") {
+      setActiveTab("history");
     }
     if (!selectedSourceId && sourceList[0]) {
       setSelectedSourceId(String(sourceList[0].id));
@@ -199,6 +236,7 @@ function App() {
         method: "POST",
         body: JSON.stringify({
           name: sourceForm.name,
+          tenant_id: Number(selectedTenantId),
           source_type: sourceForm.source_type,
           connection_uri: sourceForm.connection_uri,
           table_name: sourceForm.table_name,
@@ -217,7 +255,7 @@ function App() {
     await runAction(async () => {
       await api("/ingestion/sources", {
         method: "POST",
-        body: JSON.stringify({ name: managedSourceName, config: {} }),
+        body: JSON.stringify({ tenant_id: Number(selectedTenantId), name: managedSourceName, config: {} }),
       });
       setMessage("Fonte gerenciada criada. Crie um agent e use o collector para enviar dados.");
       await loadWorkspace();
@@ -230,7 +268,7 @@ function App() {
     await runAction(async () => {
       const agent = await api("/ingestion/agents", {
         method: "POST",
-        body: JSON.stringify({ name: agentName }),
+        body: JSON.stringify({ tenant_id: Number(selectedTenantId), name: agentName }),
       });
       setCreatedAgentToken(agent.token);
       setCollectorConfig(buildCollectorConfig({ token: agent.token, sourceId: selectedManagedSourceId(activeSources) }));
@@ -260,7 +298,7 @@ function App() {
       }
       const formData = new FormData();
       formData.append("file", uploadForm.file);
-      const query = new URLSearchParams({ name: uploadForm.name, source_type: uploadForm.source_type });
+      const query = new URLSearchParams({ tenant_id: selectedTenantId, name: uploadForm.name, source_type: uploadForm.source_type });
       await api(`/data-sources/upload?${query.toString()}`, { method: "POST", body: formData });
       setUploadForm({ name: "Nova fonte CSV", source_type: "csv", file: null });
       setMessage("Arquivo enviado e fonte criada.");
@@ -271,9 +309,12 @@ function App() {
 
   async function showPreview(sourceId) {
     await runAction(async () => {
-      const data = await api(`/data-sources/${sourceId}/preview`);
+      const tenantQuery = isPlatformAdmin ? `?tenant_id=${selectedTenantId}` : "";
+      const data = await api(`/data-sources/${sourceId}/preview${tenantQuery}`);
+      const attributes = await api(`/data-sources/${sourceId}/attributes${tenantQuery}`);
       setSelectedSourceId(String(sourceId));
       setPreview(data);
+      setSourceAttributes(attributes);
       setMessage(`Preview carregado: ${data.columns.length} coluna(s).`);
     });
   }
@@ -281,7 +322,8 @@ function App() {
   async function createAlert(event) {
     event.preventDefault();
     await runAction(async () => {
-      await api("/alerts", {
+      const tenantQuery = isPlatformAdmin ? `?tenant_id=${selectedTenantId}` : "";
+      await api(`/alerts${tenantQuery}`, {
         method: "POST",
         body: JSON.stringify({
           ...alertForm,
@@ -298,7 +340,8 @@ function App() {
 
   async function runAlert(id) {
     await runAction(async () => {
-      const result = await api(`/alerts/${id}/run`, { method: "POST" });
+      const tenantQuery = isPlatformAdmin ? `?tenant_id=${selectedTenantId}` : "";
+      const result = await api(`/alerts/${id}/run${tenantQuery}`, { method: "POST" });
       setMessage(`Alerta executado: ${result.status} (${result.matched_count} ${pluralize(result.matched_count, "registro encontrado", "registros encontrados")}).`);
       await loadWorkspace();
       setActiveTab("history");
@@ -307,7 +350,8 @@ function App() {
 
   async function deactivateAlert(id) {
     await runAction(async () => {
-      await api(`/alerts/${id}`, { method: "DELETE" });
+      const tenantQuery = isPlatformAdmin ? `?tenant_id=${selectedTenantId}` : "";
+      await api(`/alerts/${id}${tenantQuery}`, { method: "DELETE" });
       setMessage("Alerta desativado.");
       await loadWorkspace();
     });
@@ -315,7 +359,7 @@ function App() {
 
   async function deactivateSource(id) {
     await runAction(async () => {
-      await api(`/data-sources/${id}`, { method: "DELETE" });
+      await api(`/data-sources/${id}?tenant_id=${selectedTenantId}`, { method: "DELETE" });
       setMessage("Fonte desativada.");
       await loadWorkspace();
     });
@@ -344,8 +388,11 @@ function App() {
     setExecutions([]);
     setUsers([]);
     setAgents([]);
+    setTenants([]);
+    setSelectedTenantId("");
     setCurrentUser(null);
     setPreview(null);
+    setSourceAttributes([]);
     setMessage("Sessao encerrada.");
   }
 
@@ -358,10 +405,11 @@ function App() {
         </div>
         <nav>
           <NavItem active={activeTab === "dashboard"} icon={<Activity size={18} />} label="Dashboard" onClick={() => setActiveTab("dashboard")} />
-          {isAdmin && <NavItem active={activeTab === "sources"} icon={<Database size={18} />} label="Fontes" onClick={() => setActiveTab("sources")} />}
-          <NavItem active={activeTab === "alerts"} icon={<Bell size={18} />} label="Alertas" onClick={() => setActiveTab("alerts")} />
+          {isPlatformAdmin && <NavItem active={activeTab === "companies"} icon={<Building2 size={18} />} label="Empresas" onClick={() => setActiveTab("companies")} />}
+          {isPlatformAdmin && <NavItem active={activeTab === "sources"} icon={<Database size={18} />} label="Fontes" onClick={() => setActiveTab("sources")} />}
+          {(isPlatformAdmin || canManageTenant) && <NavItem active={activeTab === "alerts"} icon={<Bell size={18} />} label="Alertas" onClick={() => setActiveTab("alerts")} />}
           <NavItem active={activeTab === "history"} icon={<History size={18} />} label="Relatorios" onClick={() => setActiveTab("history")} />
-          {isAdmin && <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />}
+          {canManageTenant && <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />}
         </nav>
       </aside>
 
@@ -381,17 +429,12 @@ function App() {
 
         {!token && (
           <AuthPanel
-            authMode={authMode}
             email={email}
             loading={loading}
             login={login}
             password={password}
-            setAuthMode={setAuthMode}
             setEmail={setEmail}
             setPassword={setPassword}
-            setSignupForm={setSignupForm}
-            signupCompany={signupCompany}
-            signupForm={signupForm}
           />
         )}
 
@@ -414,14 +457,24 @@ function App() {
                 <p>Alertas cadastrados: {alerts.length}</p>
               </div>
               <div>
-                <h2>{isAdmin ? "Fluxo admin" : "Acesso usuario"}</h2>
-                <p>{isAdmin ? "Cadastre fontes, agents, usuarios e regras de alerta." : "Acompanhe alertas, execucoes e relatorios da sua empresa."}</p>
+                <h2>{isPlatformAdmin ? "Admin geral" : canManageTenant ? "Admin da empresa" : "Acesso usuario"}</h2>
+                <p>{isPlatformAdmin ? "Cadastre empresas, limites comerciais, fontes de dados e agents de integracao." : canManageTenant ? "Parametrize alertas, acompanhe relatorios e gerencie usuarios da sua empresa." : "Acompanhe relatorios da sua empresa."}</p>
               </div>
             </section>
           </>
         )}
 
-        {token && isAdmin && activeTab === "sources" && (
+        {token && isPlatformAdmin && activeTab === "companies" && (
+          <CompaniesView
+            loading={loading}
+            setSignupForm={setSignupForm}
+            signupCompany={signupCompany}
+            signupForm={signupForm}
+            tenants={tenants.filter((tenant) => tenant.document !== "SENTINELA")}
+          />
+        )}
+
+        {token && isPlatformAdmin && activeTab === "sources" && (
           <SourcesView
             activeSources={activeSources}
             agentName={agentName}
@@ -446,10 +499,16 @@ function App() {
             sourceForm={sourceForm}
             uploadForm={uploadForm}
             uploadSource={uploadSource}
+            selectedTenantId={selectedTenantId}
+            setSelectedTenantId={(tenantId) => {
+              setSelectedTenantId(tenantId);
+              runAction(() => loadWorkspace(token, tenantId), { quiet: true });
+            }}
+            tenants={tenants.filter((tenant) => tenant.document !== "SENTINELA")}
           />
         )}
 
-        {token && activeTab === "alerts" && (
+        {token && (isPlatformAdmin || canManageTenant) && activeTab === "alerts" && (
           <AlertsView
             activeAlerts={activeAlerts}
             activeSources={activeSources}
@@ -460,11 +519,13 @@ function App() {
             preview={preview}
             runAlert={runAlert}
             setAlertForm={setAlertForm}
+            showPreview={showPreview}
+            sourceAttributes={sourceAttributes}
           />
         )}
 
         {token && activeTab === "history" && <HistoryView executions={executions} />}
-        {token && isAdmin && activeTab === "users" && (
+        {token && canManageTenant && activeTab === "users" && (
           <UsersView
             createUser={createUser}
             loading={loading}
@@ -496,10 +557,13 @@ function SourcesView({
   setAlertForm,
   setCollectorConfig,
   setManagedSourceName,
+  selectedTenantId,
   setSourceForm,
+  setSelectedTenantId,
   setUploadForm,
   showPreview,
   sourceForm,
+  tenants,
   uploadForm,
   uploadSource,
 }) {
@@ -507,6 +571,19 @@ function SourcesView({
 
   return (
     <>
+      <section className="panel form-grid">
+        <div className="panel-title with-action">
+          <h2>Empresa alvo da integracao</h2>
+          <Building2 size={18} />
+        </div>
+        <label>Empresa cliente
+          <select value={selectedTenantId} onChange={(event) => setSelectedTenantId(event.target.value)}>
+            <option value="">Selecione</option>
+            {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+          </select>
+        </label>
+      </section>
+
       <section className="grid-2">
         <form className="panel form-grid" onSubmit={createManagedSource}>
           <div className="panel-title with-action">
@@ -514,7 +591,7 @@ function SourcesView({
             <Shield size={18} />
           </div>
           <label>Nome<input value={managedSourceName} onChange={(event) => setManagedSourceName(event.target.value)} /></label>
-          <button disabled={loading || !managedSourceName}><Plus size={16} /> Criar fonte gerenciada</button>
+          <button disabled={loading || !selectedTenantId || !managedSourceName}><Plus size={16} /> Criar fonte gerenciada</button>
         </form>
 
         <form className="panel form-grid" onSubmit={createAgent}>
@@ -523,7 +600,7 @@ function SourcesView({
             <Shield size={18} />
           </div>
           <label>Nome<input value={agentName} onChange={(event) => setAgentName(event.target.value)} /></label>
-          <button disabled={loading || !agentName}><Plus size={16} /> Criar agent</button>
+          <button disabled={loading || !selectedTenantId || !agentName}><Plus size={16} /> Criar agent</button>
           {createdAgentToken && (
             <div className="token-box">
               <strong>Token do agent</strong>
@@ -564,7 +641,7 @@ function SourcesView({
             </select>
           </label>
           <label>Arquivo<input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={(event) => setUploadForm((current) => ({ ...current, file: event.target.files?.[0] || null }))} /></label>
-          <button disabled={loading || !uploadForm.name}><Plus size={16} /> Criar fonte</button>
+          <button disabled={loading || !selectedTenantId || !uploadForm.name}><Plus size={16} /> Criar fonte</button>
         </form>
 
         <form className="panel form-grid" onSubmit={createDatabaseSource}>
@@ -582,7 +659,7 @@ function SourcesView({
           <label>Nome<input value={sourceForm.name} onChange={(event) => setSourceForm((current) => ({ ...current, name: event.target.value }))} /></label>
           <label>Connection URI<input value={sourceForm.connection_uri} onChange={(event) => setSourceForm((current) => ({ ...current, connection_uri: event.target.value }))} placeholder={dbExample.uri} /></label>
           <label>Tabela<input value={sourceForm.table_name} onChange={(event) => setSourceForm((current) => ({ ...current, table_name: event.target.value }))} placeholder={dbExample.table} /></label>
-          <button disabled={loading || !sourceForm.name || !sourceForm.connection_uri || !sourceForm.table_name}><Plus size={16} /> Criar conexao</button>
+          <button disabled={loading || !selectedTenantId || !sourceForm.name || !sourceForm.connection_uri || !sourceForm.table_name}><Plus size={16} /> Criar conexao</button>
         </form>
       </section>
 
@@ -627,54 +704,82 @@ function SourcesView({
 }
 
 function AuthPanel({
-  authMode,
   email,
   loading,
   login,
   password,
-  setAuthMode,
   setEmail,
   setPassword,
-  setSignupForm,
-  signupCompany,
-  signupForm,
 }) {
   return (
     <section className="panel auth-panel">
-      <div className="segmented">
-        <button className={authMode === "login" ? "active" : "secondary"} onClick={() => setAuthMode("login")} type="button">Entrar</button>
-        <button className={authMode === "signup" ? "active" : "secondary"} onClick={() => setAuthMode("signup")} type="button">Criar empresa</button>
+      <div className="panel-title">
+        <h2>Entrar no Sentinela</h2>
       </div>
+      <form className="login" onSubmit={login}>
+        <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>Senha<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <button type="submit" disabled={loading}>Entrar</button>
+      </form>
+    </section>
+  );
+}
 
-      {authMode === "login" && (
-        <form className="login" onSubmit={login}>
-          <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-          <label>Senha<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-          <button type="submit" disabled={loading}>Entrar</button>
-        </form>
-      )}
-
-      {authMode === "signup" && (
+function CompaniesView({ loading, setSignupForm, signupCompany, signupForm, tenants }) {
+  return (
+    <>
+      <section className="panel form-grid">
+        <div className="panel-title with-action">
+          <h2>Nova empresa cliente</h2>
+          <Building2 size={18} />
+        </div>
         <form className="signup-form" onSubmit={signupCompany}>
           <label>Empresa<input value={signupForm.company_name} onChange={(event) => setSignupForm((current) => ({ ...current, company_name: event.target.value }))} /></label>
           <label>Documento<input value={signupForm.document} onChange={(event) => setSignupForm((current) => ({ ...current, document: event.target.value }))} placeholder="CNPJ opcional" /></label>
+          <label>Plano
+            <select value={signupForm.plan} onChange={(event) => setSignupForm((current) => ({ ...current, plan: event.target.value }))}>
+              <option value="free">free</option>
+              <option value="starter">starter</option>
+              <option value="business">business</option>
+              <option value="enterprise">enterprise</option>
+            </select>
+          </label>
+          <label>Limite de fontes<input type="number" min="1" value={signupForm.max_sources} onChange={(event) => setSignupForm((current) => ({ ...current, max_sources: Number(event.target.value) }))} /></label>
+          <label>Limite de alertas<input type="number" min="1" value={signupForm.max_alerts} onChange={(event) => setSignupForm((current) => ({ ...current, max_alerts: Number(event.target.value) }))} /></label>
           <label>Nome do admin<input value={signupForm.admin_name} onChange={(event) => setSignupForm((current) => ({ ...current, admin_name: event.target.value }))} /></label>
           <label>Email do admin<input value={signupForm.admin_email} onChange={(event) => setSignupForm((current) => ({ ...current, admin_email: event.target.value }))} /></label>
           <label>Senha do admin<input type="password" value={signupForm.admin_password} onChange={(event) => setSignupForm((current) => ({ ...current, admin_password: event.target.value }))} /></label>
           <button
             type="submit"
-            disabled={loading || !signupForm.company_name || !signupForm.admin_name || !signupForm.admin_email || signupForm.admin_password.length < 8}
+            disabled={loading || !signupForm.company_name || !signupForm.admin_name || !signupForm.admin_email || signupForm.admin_password.length < 8 || signupForm.max_sources < 1 || signupForm.max_alerts < 1}
           >
             <Plus size={16} /> Criar empresa e admin
           </button>
         </form>
-      )}
-    </section>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title"><h2>Empresas cadastradas</h2></div>
+        <div className="table">
+          <div className="row companies-head"><span>Empresa</span><span>Plano</span><span>Fontes</span><span>Alertas</span><span>Status</span></div>
+          {tenants.map((tenant) => (
+            <div className="row companies-row" key={tenant.id}>
+              <span>{tenant.name}</span>
+              <span>{tenant.plan || "starter"}</span>
+              <span>{tenant.max_sources}</span>
+              <span>{tenant.max_alerts}</span>
+              <span>{tenant.is_active ? "ativa" : "inativa"}</span>
+            </div>
+          ))}
+          {tenants.length === 0 && <div className="empty">Nenhuma empresa cadastrada.</div>}
+        </div>
+      </section>
+    </>
   );
 }
 
-function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deactivateAlert, loading, preview, runAlert, setAlertForm }) {
-  const previewColumns = preview?.columns || [];
+function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deactivateAlert, loading, preview, runAlert, setAlertForm, showPreview, sourceAttributes }) {
+  const previewColumns = sourceAttributes.length > 0 ? sourceAttributes.map((attribute) => attribute.name) : (preview?.columns || []);
 
   return (
     <>
@@ -686,7 +791,15 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
         <form className="alert-form" onSubmit={createAlert}>
           <label>Nome<input value={alertForm.name} onChange={(event) => setAlertForm((current) => ({ ...current, name: event.target.value }))} placeholder="Pedidos acima de 1000" /></label>
           <label>Fonte
-            <select value={alertForm.data_source_id} onChange={(event) => setAlertForm((current) => ({ ...current, data_source_id: event.target.value }))}>
+            <select
+              value={alertForm.data_source_id}
+              onChange={(event) => {
+                setAlertForm((current) => ({ ...current, data_source_id: event.target.value }));
+                if (event.target.value) {
+                  showPreview(event.target.value);
+                }
+              }}
+            >
               <option value="">Selecione</option>
               {activeSources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
             </select>

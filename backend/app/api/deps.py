@@ -31,6 +31,18 @@ def get_current_user(
 
 
 def require_admin(current_user: Annotated[User, Depends(get_current_user)]) -> User:
-    if current_user.role != "admin":
+    if current_user.role not in {"admin", "super_admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a admins")
+    return current_user
+
+
+def require_tenant_admin(current_user: Annotated[User, Depends(get_current_user)]) -> User:
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito ao admin da empresa")
+    return current_user
+
+
+def require_super_admin(current_user: Annotated[User, Depends(get_current_user)]) -> User:
+    if current_user.role != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito ao admin geral")
     return current_user

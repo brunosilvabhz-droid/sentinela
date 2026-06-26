@@ -11,8 +11,27 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        if db.query(Tenant).count() == 0:
-            tenant = Tenant(name="Demo Corp", document="00000000000100", plan="free", max_alerts=5)
+        legacy_super_admin = db.query(User).filter(User.email == "super_admin@sentinela.local").first()
+        if legacy_super_admin:
+            legacy_super_admin.email = "superadmin@sentinela.com.br"
+            db.commit()
+
+        if db.query(User).filter(User.email == "superadmin@sentinela.com.br").first() is None:
+            platform = Tenant(name="SENTINELA Platform", document="SENTINELA", plan="enterprise", max_sources=9999, max_alerts=9999)
+            db.add(platform)
+            db.flush()
+            super_admin = User(
+                tenant_id=platform.id,
+                name="Super Admin SENTINELA",
+                email="superadmin@sentinela.com.br",
+                hashed_password=hash_password("superadmin123"),
+                role="super_admin",
+            )
+            db.add(super_admin)
+            db.commit()
+
+        if db.query(Tenant).filter(Tenant.document == "00000000000100").first() is None:
+            tenant = Tenant(name="Demo Corp", document="00000000000100", plan="free", max_sources=3, max_alerts=5)
             db.add(tenant)
             db.flush()
             user = User(

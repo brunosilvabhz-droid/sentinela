@@ -330,6 +330,11 @@ label.inline input {
   grid-template-columns: 1fr 1.4fr 120px 120px;
 }
 
+.companies-head,
+.companies-row {
+  grid-template-columns: 1.4fr 120px 100px 100px 120px;
+}
+
 .agents-head,
 .agents-row {
   grid-template-columns: 1fr 120px 220px;
@@ -514,6 +519,8 @@ th {
   .history-row,
   .users-head,
   .users-row,
+  .companies-head,
+  .companies-row,
   .agents-head,
   .agents-row {
     grid-template-columns: 1fr;

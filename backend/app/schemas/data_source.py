@@ -6,6 +6,7 @@ from app.schemas.common import ORMModel
 
 
 class DataSourceCreate(BaseModel):
+    tenant_id: int | None = None
     name: str
     source_type: str
     file_path: str | None = None
@@ -34,6 +35,7 @@ class DataSourceRead(ORMModel):
 
 
 class ManagedDataSourceCreate(BaseModel):
+    tenant_id: int | None = None
     name: str
     config: dict | None = None
 
@@ -42,3 +44,9 @@ class DataSourcePreview(BaseModel):
     columns: list[str]
     rows: list[dict]
     total_preview_rows: int
+
+
+class DataSourceAttributeRead(BaseModel):
+    name: str
+    type: str | None = None
+    sample_values: list[str | None] = []

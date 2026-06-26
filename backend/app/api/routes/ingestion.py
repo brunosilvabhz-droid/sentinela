@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import require_super_admin
 from app.db.session import get_db
 from app.models.collector import CollectorAgent
 from app.models.data_source import DataSource
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.data_source import DataSourceRead, ManagedDataSourceCreate
 from app.schemas.ingestion import (
@@ -16,6 +17,7 @@ from app.schemas.ingestion import (
 )
 from app.services.collector_auth import authenticate_agent, generate_agent_token, hash_agent_token
 from app.services.ingestion_service import ingest_batch
+from app.services.tenant_limits import assert_can_create_data_source
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
@@ -24,10 +26,14 @@ router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 def create_managed_source(
     payload: ManagedDataSourceCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_super_admin),
 ) -> DataSource:
+    if payload.tenant_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tenant_id e obrigatorio para criar fonte")
+    tenant = get_active_tenant(db, payload.tenant_id)
+    assert_can_create_data_source(db, tenant)
     data_source = DataSource(
-        tenant_id=current_user.tenant_id,
+        tenant_id=tenant.id,
         name=payload.name,
         source_type="managed",
         config=payload.config or {},
@@ -42,11 +48,14 @@ def create_managed_source(
 def create_collector_agent(
     payload: CollectorAgentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_super_admin),
 ) -> dict:
+    if payload.tenant_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tenant_id e obrigatorio para criar agent")
+    tenant = get_active_tenant(db, payload.tenant_id)
     token = generate_agent_token()
     agent = CollectorAgent(
-        tenant_id=current_user.tenant_id,
+        tenant_id=tenant.id,
         name=payload.name,
         token_hash=hash_agent_token(token),
     )
@@ -65,10 +74,11 @@ def create_collector_agent(
 
 @router.get("/agents", response_model=list[CollectorAgentRead])
 def list_collector_agents(
+    tenant_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_super_admin),
 ) -> list[CollectorAgent]:
-    return db.query(CollectorAgent).filter(CollectorAgent.tenant_id == current_user.tenant_id).all()
+    return db.query(CollectorAgent).filter(CollectorAgent.tenant_id == tenant_id).all()
 
 
 @router.post("/batches", response_model=IngestionBatchRead)
@@ -81,3 +91,10 @@ def receive_ingestion_batch(
         return ingest_batch(db, agent, payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+def get_active_tenant(db: Session, tenant_id: int) -> Tenant:
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active.is_(True)).first()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa nao encontrada")
+    return tenant

@@ -6,6 +6,7 @@ from app.schemas.common import ORMModel
 
 
 class CollectorAgentCreate(BaseModel):
+    tenant_id: int | None = None
     name: str
 
 

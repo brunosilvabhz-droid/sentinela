@@ -57,3 +57,23 @@ class IngestedRecord(Base):
 
     batch = relationship("IngestionBatch")
     data_source = relationship("DataSource")
+
+
+class IngestedAttribute(Base):
+    __tablename__ = "ingested_attributes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "data_source_id", "record_id", "attribute_name", name="uq_ingested_attribute_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_sources.id"), index=True, nullable=False)
+    record_id: Mapped[int] = mapped_column(ForeignKey("ingested_records.id"), index=True, nullable=False)
+    source_record_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    attribute_name: Mapped[str] = mapped_column(String(160), index=True, nullable=False)
+    attribute_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attribute_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    record = relationship("IngestedRecord")
+    data_source = relationship("DataSource")
