@@ -1146,6 +1146,11 @@ function selectedManagedSourceId(sources) {
   return sources.find((source) => source.source_type === "managed")?.id || sources[0]?.id || 1;
 }
 
+function getAckTokenFromPath() {
+  const match = window.location.pathname.match(/^\/ack\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 function buildCollectorConfig({ token, sourceId }) {
   return JSON.stringify(
     {
