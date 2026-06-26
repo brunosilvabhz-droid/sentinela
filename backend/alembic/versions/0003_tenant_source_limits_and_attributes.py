@@ -10,7 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "0003_tenant_source_limits_and_attributes"
+revision: str = "0003_tenant_limits"
 down_revision: Union[str, None] = "0002_add_ingestion_agent_tables"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
