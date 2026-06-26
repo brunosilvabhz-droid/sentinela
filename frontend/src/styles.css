@@ -579,3 +579,38 @@ th {
     grid-template-columns: 1fr;
   }
 }
+
+.impacto-header nav {
+  display: flex;
+}
+
+.impacto-desktop-nav,
+.impacto-desktop-actions {
+  display: flex;
+}
+
+.impacto-mobile-actions,
+.impacto-mobile-nav {
+  display: none;
+}
+
+.impacto-header a {
+  text-decoration: none;
+}
+
+.impacto-header .impacto-desktop-actions a,
+.impacto-header .impacto-mobile-actions a {
+  min-height: 40px;
+}
+
+@media (max-width: 1023px) {
+  .impacto-desktop-nav,
+  .impacto-desktop-actions {
+    display: none;
+  }
+
+  .impacto-mobile-actions,
+  .impacto-mobile-nav {
+    display: flex;
+  }
+}
