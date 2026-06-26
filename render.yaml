@@ -129,7 +129,7 @@ services:
     autoDeployTrigger: commit
     envVars:
       - key: VITE_API_URL
-        value: https://sentinela-api-ej0m.onrender.com/api/v1
+        value: https://sentinela-api-ef0m.onrender.com/api/v1
       - key: VITE_SENTINELA_LOGIN_URL
         value: /app
     routes:
