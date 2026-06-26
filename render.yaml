@@ -10,6 +10,8 @@ services:
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
@@ -53,6 +55,8 @@ services:
     startCommand: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
     autoDeployTrigger: commit
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
@@ -97,6 +101,8 @@ services:
     startCommand: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
     autoDeployTrigger: commit
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
