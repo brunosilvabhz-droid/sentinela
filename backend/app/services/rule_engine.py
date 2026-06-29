@@ -76,7 +76,7 @@ def execute_alert(db: Session, alert: Alert) -> AlertExecution:
             if occurrence.status in {"acknowledged", "open"} and occurrence.first_seen_at != occurrence.last_seen_at:
                 execution.status = "suppressed"
             else:
-                send_alert_notifications(alert, result, occurrence)
+                send_alert_notifications(alert, result, occurrence, db)
                 execution.status = "sent"
         else:
             _resolve_open_occurrences(db, alert)

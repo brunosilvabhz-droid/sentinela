@@ -177,8 +177,21 @@ p {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.signup-form button {
+.signup-form button,
+.settings-form button {
   align-self: end;
+}
+
+.settings-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+label small {
+  color: #64748b;
+  font-size: 12px;
+  margin-top: -2px;
 }
 
 label {
@@ -546,7 +559,8 @@ th {
   .two-column,
   .alert-form,
   .user-form,
-  .signup-form {
+  .signup-form,
+  .settings-form {
     grid-template-columns: 1fr;
   }
 

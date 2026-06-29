@@ -86,6 +86,7 @@ def create_alert(
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fonte nao encontrada")
     validate_alert_rules(payload.condition, payload.rules, payload.rule_logic)
+    validate_whatsapp_recipient_limit(payload.channels, payload.recipients)
     if not any(channel in {"email", "whatsapp"} for channel in payload.channels):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe ao menos um canal valido")
     alert = Alert(tenant_id=target_tenant_id, **payload.model_dump())
@@ -134,6 +135,10 @@ def update_alert(
         update_data.get("condition", alert.condition),
         update_data.get("rules", alert.rules),
         update_data.get("rule_logic", alert.rule_logic),
+    )
+    validate_whatsapp_recipient_limit(
+        update_data.get("channels", alert.channels),
+        update_data.get("recipients", alert.recipients),
     )
     for key, value in update_data.items():
         setattr(alert, key, value)
@@ -330,3 +335,19 @@ def validate_alert_rules(condition: str, rules: list | None, rule_logic: str | N
         rule_value = rule.threshold_value if hasattr(rule, "threshold_value") else rule.get("threshold_value")
         if not str(rule_column or "").strip() or rule_condition not in VALID_CONDITIONS or not str(rule_value or "").strip():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Regra composta invalida")
+
+
+def validate_whatsapp_recipient_limit(channels: list[str], recipients: list[str]) -> None:
+    if "whatsapp" not in channels:
+        return
+    whatsapp_recipients = [recipient for recipient in recipients if is_whatsapp_recipient(recipient)]
+    if len(whatsapp_recipients) > 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cada alerta pode ter no maximo 3 numeros de WhatsApp",
+        )
+
+
+def is_whatsapp_recipient(recipient: str) -> bool:
+    value = recipient.strip().lower()
+    return bool(value) and "@" not in value and (value.startswith("+") or value.startswith("whatsapp:"))

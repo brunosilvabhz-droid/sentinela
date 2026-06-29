@@ -11,6 +11,7 @@ import {
   Play,
   Plus,
   RefreshCcw,
+  Settings,
   Shield,
   Trash2,
   Building2,
@@ -50,7 +51,8 @@ const emptyAlertForm = {
   rule_logic: "AND",
   rules: [{ column_name: "", condition: ">", threshold_value: "" }],
   frequency: "15m",
-  recipients: "financeiro@demo.com",
+  email_recipients: "financeiro@demo.com",
+  whatsapp_recipients: "",
   channels: ["email"],
 };
 
@@ -102,6 +104,7 @@ export default function SentinelaApp() {
   const [uploadForm, setUploadForm] = useState({ name: "Nova fonte CSV", source_type: "csv", file: null });
   const [alertForm, setAlertForm] = useState(emptyAlertForm);
   const [userForm, setUserForm] = useState(emptyUserForm);
+  const [appSettings, setAppSettings] = useState({ alert_copy_email: "", alert_copy_whatsapp: "" });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -220,6 +223,9 @@ export default function SentinelaApp() {
     if (isSuper && targetTenantId) {
       agentList = await api(`/ingestion/agents?tenant_id=${targetTenantId}`, {}, authToken);
     }
+    if (isSuper) {
+      setAppSettings(await api("/settings/alert-copy", {}, authToken));
+    }
     setCurrentUser(me);
     setSummary(dashboard);
     setSources(sourceList);
@@ -238,6 +244,9 @@ export default function SentinelaApp() {
       setActiveTab("dashboard");
     }
     if (me.role !== "super_admin" && activeTab === "companies") {
+      setActiveTab("dashboard");
+    }
+    if (me.role !== "super_admin" && activeTab === "settings") {
       setActiveTab("dashboard");
     }
     if (me.role === "user" && activeTab !== "dashboard" && activeTab !== "history") {
@@ -352,6 +361,11 @@ export default function SentinelaApp() {
       if (rules.length === 0) {
         throw new Error("Informe ao menos uma condicao para o alerta.");
       }
+      const emailRecipients = splitList(alertForm.email_recipients);
+      const whatsappRecipients = splitList(alertForm.whatsapp_recipients);
+      if (whatsappRecipients.length > 3) {
+        throw new Error("Cada alerta pode ter no maximo 3 numeros de WhatsApp.");
+      }
       const primaryRule = rules[0];
       await api(`/alerts${tenantQuery}`, {
         method: "POST",
@@ -363,7 +377,7 @@ export default function SentinelaApp() {
           threshold_value: primaryRule.threshold_value,
           rule_logic: alertForm.rule_logic,
           rules,
-          recipients: splitList(alertForm.recipients),
+          recipients: [...emailRecipients, ...whatsappRecipients],
         }),
       });
       setAlertForm({ ...emptyAlertForm, data_source_id: alertForm.data_source_id });
@@ -389,6 +403,18 @@ export default function SentinelaApp() {
       await api(`/alerts/${id}${tenantQuery}`, { method: "DELETE" });
       setMessage("Alerta desativado.");
       await loadWorkspace();
+    });
+  }
+
+  async function saveAppSettings(event) {
+    event.preventDefault();
+    await runAction(async () => {
+      const updated = await api("/settings/alert-copy", {
+        method: "PUT",
+        body: JSON.stringify(appSettings),
+      });
+      setAppSettings(updated);
+      setMessage("Configuracoes de copia operacional salvas.");
     });
   }
 
@@ -448,6 +474,7 @@ export default function SentinelaApp() {
           {(isPlatformAdmin || canManageTenant) && <NavItem active={activeTab === "alerts"} icon={<Bell size={18} />} label="Alertas" onClick={() => setActiveTab("alerts")} />}
           <NavItem active={activeTab === "history"} icon={<History size={18} />} label="Relatorios" onClick={() => setActiveTab("history")} />
           {canManageTenant && <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />}
+          {isPlatformAdmin && <NavItem active={activeTab === "settings"} icon={<Settings size={18} />} label="Configurações" onClick={() => setActiveTab("settings")} />}
         </nav>
       </aside>
 
@@ -564,6 +591,15 @@ export default function SentinelaApp() {
             setAlertForm={setAlertForm}
             showPreview={showPreview}
             sourceAttributes={sourceAttributes}
+          />
+        )}
+
+        {token && isPlatformAdmin && activeTab === "settings" && (
+          <SettingsView
+            appSettings={appSettings}
+            loading={loading}
+            saveAppSettings={saveAppSettings}
+            setAppSettings={setAppSettings}
           />
         )}
 
@@ -828,6 +864,39 @@ function CompaniesView({ loading, setSignupForm, signupCompany, signupForm, tena
   );
 }
 
+function SettingsView({ appSettings, loading, saveAppSettings, setAppSettings }) {
+  return (
+    <section className="panel form-grid">
+      <div className="panel-title with-action">
+        <div>
+          <h2>Copia operacional de alertas</h2>
+          <p>Esses contatos recebem uma copia de todos os alertas disparados para validar a operacao.</p>
+        </div>
+        <Settings size={18} />
+      </div>
+      <form className="settings-form" onSubmit={saveAppSettings}>
+        <label>E-mail de copia
+          <input
+            value={appSettings.alert_copy_email || ""}
+            onChange={(event) => setAppSettings((current) => ({ ...current, alert_copy_email: event.target.value }))}
+            placeholder="operacao@impactocg.com"
+          />
+        </label>
+        <label>WhatsApp de copia
+          <input
+            value={appSettings.alert_copy_whatsapp || ""}
+            onChange={(event) => setAppSettings((current) => ({ ...current, alert_copy_whatsapp: event.target.value }))}
+            placeholder="+553191275790"
+          />
+        </label>
+        <button type="submit" disabled={loading}>
+          <Settings size={16} /> Salvar configuracoes
+        </button>
+      </form>
+    </section>
+  );
+}
+
 function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deactivateAlert, loading, preview, runAlert, setAlertForm, showPreview, sourceAttributes }) {
   const previewColumns = sourceAttributes.length > 0 ? sourceAttributes.map((attribute) => attribute.name) : (preview?.columns || []);
 
@@ -899,7 +968,11 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
             </button>
           </div>
           <label>Frequencia<input value={alertForm.frequency} onChange={(event) => setAlertForm((current) => ({ ...current, frequency: event.target.value }))} placeholder="15m ou */15 * * * *" /></label>
-          <label>Destinatarios<input value={alertForm.recipients} onChange={(event) => setAlertForm((current) => ({ ...current, recipients: event.target.value }))} /></label>
+          <label>E-mails do cliente<input value={alertForm.email_recipients} onChange={(event) => setAlertForm((current) => ({ ...current, email_recipients: event.target.value }))} placeholder="financeiro@empresa.com, gestor@empresa.com" /></label>
+          <label>WhatsApps do cliente
+            <input value={alertForm.whatsapp_recipients} onChange={(event) => setAlertForm((current) => ({ ...current, whatsapp_recipients: event.target.value }))} placeholder="+5531999999999, +5531888888888" />
+            <small>{splitList(alertForm.whatsapp_recipients).length}/3 numeros</small>
+          </label>
           <fieldset>
             <legend>Canais</legend>
             <label className="inline"><input type="checkbox" checked={alertForm.channels.includes("email")} onChange={(event) => toggleChannel(event, "email", setAlertForm)} /> Email</label>

@@ -2,19 +2,21 @@ import smtplib
 from email.message import EmailMessage
 
 from twilio.rest import Client
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.alert import Alert, AlertOccurrence
+from app.models.app_setting import AppSetting
 
 
-def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence) -> None:
+def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence, db: Session) -> None:
     settings = get_settings()
     acknowledgement_url = f"{settings.frontend_public_url.rstrip('/')}/ack/{occurrence.ack_token}"
     subject = f"[SENTINELA] Alerta disparado: {alert.name}"
     body = (
         f"O alerta '{alert.name}' encontrou {result.matched_count} registro(s).\n"
         f"Fonte: {alert.data_source.name}\n"
-        f"Regra: {alert.column_name} {alert.condition} {alert.threshold_value}\n"
+        f"Regra: {_format_alert_rules(alert)}\n"
         f"Confirmar leitura: {acknowledgement_url}\n"
         f"Amostra: {result.sample_records[:3]}"
     )
@@ -22,6 +24,13 @@ def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence) 
         send_email(alert.recipients, subject, body)
     if "whatsapp" in alert.channels:
         send_whatsapp(alert.recipients, body)
+
+    copy_email = get_app_setting(db, "alert_copy_email")
+    copy_whatsapp = get_app_setting(db, "alert_copy_whatsapp")
+    if copy_email:
+        send_email([copy_email], f"[COPIA OPERACIONAL] {subject}", body)
+    if copy_whatsapp:
+        send_whatsapp([copy_whatsapp], f"[COPIA OPERACIONAL]\n{body}")
 
 
 def send_email(recipients: list[str], subject: str, body: str) -> None:
@@ -57,3 +66,19 @@ def send_whatsapp(recipients: list[str], body: str) -> None:
         else:
             continue
         client.messages.create(from_=settings.twilio_whatsapp_from, to=to, body=body)
+
+
+def get_app_setting(db: Session, key: str) -> str:
+    setting = db.query(AppSetting).filter(AppSetting.key == key).first()
+    return setting.value.strip() if setting and setting.value else ""
+
+
+def _format_alert_rules(alert: Alert) -> str:
+    rules = alert.rules or [
+        {"column_name": alert.column_name, "condition": alert.condition, "threshold_value": alert.threshold_value}
+    ]
+    logic = alert.rule_logic or "AND"
+    return " ".join(
+        f"{'' if index == 0 else f'{logic} '}{rule.get('column_name')} {rule.get('condition')} {rule.get('threshold_value')}"
+        for index, rule in enumerate(rules)
+    )
