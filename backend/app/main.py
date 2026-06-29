@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings, parse_cors_origins
+from app.db.init_db import init_db
 
 settings = get_settings()
 local_origins = [
@@ -29,6 +30,11 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.on_event("startup")
+def seed_initial_data() -> None:
+    init_db()
 
 
 @app.get("/health")
