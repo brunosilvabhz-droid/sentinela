@@ -52,7 +52,7 @@ services:
     rootDir: backend
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
+    startCommand: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --pool=solo --concurrency=1 --prefetch-multiplier=1
     autoDeployTrigger: commit
     envVars:
       - key: PYTHON_VERSION

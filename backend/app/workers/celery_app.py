@@ -18,3 +18,7 @@ celery_app.conf.beat_schedule = {
     }
 }
 celery_app.conf.timezone = "UTC"
+celery_app.conf.worker_prefetch_multiplier = 1
+celery_app.conf.task_acks_late = True
+celery_app.conf.worker_max_tasks_per_child = 20
+celery_app.conf.worker_max_memory_per_child = 180000
