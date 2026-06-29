@@ -5,12 +5,20 @@ from pydantic import BaseModel
 from app.schemas.common import ORMModel
 
 
+class AlertRule(BaseModel):
+    column_name: str
+    condition: str
+    threshold_value: str
+
+
 class AlertCreate(BaseModel):
     data_source_id: int
     name: str
     column_name: str
     condition: str
     threshold_value: str
+    rules: list[AlertRule] | None = None
+    rule_logic: str = "AND"
     frequency: str = "*/15 * * * *"
     recipients: list[str]
     channels: list[str]
@@ -21,6 +29,8 @@ class AlertUpdate(BaseModel):
     column_name: str | None = None
     condition: str | None = None
     threshold_value: str | None = None
+    rules: list[AlertRule] | None = None
+    rule_logic: str | None = None
     frequency: str | None = None
     recipients: list[str] | None = None
     channels: list[str] | None = None
@@ -35,6 +45,8 @@ class AlertRead(ORMModel):
     column_name: str
     condition: str
     threshold_value: str
+    rules: list[dict] | None = None
+    rule_logic: str
     frequency: str
     recipients: list[str]
     channels: list[str]

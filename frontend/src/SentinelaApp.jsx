@@ -3,6 +3,7 @@ import {
   Activity,
   Bell,
   Database,
+  Globe,
   Eye,
   FileUp,
   History,
@@ -15,9 +16,8 @@ import {
   Building2,
   Users,
 } from "lucide-react";
+import { API_URL } from "./constants";
 import "./styles.css";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
 const emptySourceForm = {
   name: "",
@@ -47,9 +47,8 @@ const databaseExamples = {
 const emptyAlertForm = {
   name: "",
   data_source_id: "",
-  column_name: "",
-  condition: ">",
-  threshold_value: "",
+  rule_logic: "AND",
+  rules: [{ column_name: "", condition: ">", threshold_value: "" }],
   frequency: "15m",
   recipients: "financeiro@demo.com",
   channels: ["email"],
@@ -343,11 +342,27 @@ export default function SentinelaApp() {
     event.preventDefault();
     await runAction(async () => {
       const tenantQuery = isPlatformAdmin ? `?tenant_id=${selectedTenantId}` : "";
+      const rules = alertForm.rules
+        .map((rule) => ({
+          column_name: rule.column_name.trim(),
+          condition: rule.condition,
+          threshold_value: String(rule.threshold_value).trim(),
+        }))
+        .filter((rule) => rule.column_name && rule.threshold_value);
+      if (rules.length === 0) {
+        throw new Error("Informe ao menos uma condicao para o alerta.");
+      }
+      const primaryRule = rules[0];
       await api(`/alerts${tenantQuery}`, {
         method: "POST",
         body: JSON.stringify({
           ...alertForm,
           data_source_id: Number(alertForm.data_source_id),
+          column_name: primaryRule.column_name,
+          condition: primaryRule.condition,
+          threshold_value: primaryRule.threshold_value,
+          rule_logic: alertForm.rule_logic,
+          rules,
           recipients: splitList(alertForm.recipients),
         }),
       });
@@ -482,6 +497,11 @@ export default function SentinelaApp() {
               <div>
                 <h2>{isPlatformAdmin ? "Admin geral" : canManageTenant ? "Admin da empresa" : "Acesso usuario"}</h2>
                 <p>{isPlatformAdmin ? "Cadastre empresas, limites comerciais, fontes de dados e agents de integracao." : canManageTenant ? "Parametrize alertas, acompanhe relatorios e gerencie usuarios da sua empresa." : "Acompanhe relatorios da sua empresa."}</p>
+                {isPlatformAdmin && (
+                  <a className="landing-admin-link" href="/landing-admin">
+                    <Globe size={16} /> Editar landing IMPACTO
+                  </a>
+                )}
               </div>
             </section>
           </>
@@ -834,23 +854,50 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
               {activeSources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
             </select>
           </label>
-          <label>Coluna
-            <input list="columns" value={alertForm.column_name} onChange={(event) => setAlertForm((current) => ({ ...current, column_name: event.target.value }))} placeholder="valor_total" />
+          <div className="rule-builder">
+            <div className="rule-builder-header">
+              <div>
+                <strong>Condicoes do alerta</strong>
+                <span>Combine campos da fonte para decidir quando disparar.</span>
+              </div>
+              <label>Operador
+                <select value={alertForm.rule_logic} onChange={(event) => setAlertForm((current) => ({ ...current, rule_logic: event.target.value }))}>
+                  <option value="AND">AND - todas</option>
+                  <option value="OR">OR - qualquer uma</option>
+                </select>
+              </label>
+            </div>
             <datalist id="columns">
               {previewColumns.map((column) => <option key={column} value={column} />)}
             </datalist>
-          </label>
-          <label>Condicao
-            <select value={alertForm.condition} onChange={(event) => setAlertForm((current) => ({ ...current, condition: event.target.value }))}>
-              <option value=">">&gt;</option>
-              <option value="<">&lt;</option>
-              <option value="=">=</option>
-              <option value=">=">&gt;=</option>
-              <option value="<=">&lt;=</option>
-              <option value="!=">!=</option>
-            </select>
-          </label>
-          <label>Valor<input value={alertForm.threshold_value} onChange={(event) => setAlertForm((current) => ({ ...current, threshold_value: event.target.value }))} /></label>
+            {alertForm.rules.map((rule, index) => (
+              <div className="rule-row" key={index}>
+                <span className="rule-index">{index === 0 ? "SE" : alertForm.rule_logic}</span>
+                <label>Coluna
+                  <input list="columns" value={rule.column_name} onChange={(event) => updateAlertRule(setAlertForm, index, "column_name", event.target.value)} placeholder="valor_total" />
+                </label>
+                <label>Condicao
+                  <select value={rule.condition} onChange={(event) => updateAlertRule(setAlertForm, index, "condition", event.target.value)}>
+                    <option value=">">&gt;</option>
+                    <option value="<">&lt;</option>
+                    <option value="=">=</option>
+                    <option value=">=">&gt;=</option>
+                    <option value="<=">&lt;=</option>
+                    <option value="!=">!=</option>
+                  </select>
+                </label>
+                <label>Valor
+                  <input value={rule.threshold_value} onChange={(event) => updateAlertRule(setAlertForm, index, "threshold_value", event.target.value)} placeholder={index === 0 ? "1000" : "3"} />
+                </label>
+                <button className="icon-button secondary" type="button" onClick={() => removeAlertRule(setAlertForm, index)} disabled={alertForm.rules.length === 1} title="Remover condicao">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+            <button className="secondary add-rule-button" type="button" onClick={() => addAlertRule(setAlertForm)}>
+              <Plus size={16} /> Adicionar condicao
+            </button>
+          </div>
           <label>Frequencia<input value={alertForm.frequency} onChange={(event) => setAlertForm((current) => ({ ...current, frequency: event.target.value }))} placeholder="15m ou */15 * * * *" /></label>
           <label>Destinatarios<input value={alertForm.recipients} onChange={(event) => setAlertForm((current) => ({ ...current, recipients: event.target.value }))} /></label>
           <fieldset>
@@ -874,7 +921,7 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
           {activeAlerts.map((alert) => (
             <div className="row alert-list-row" key={alert.id}>
               <span>{alert.name}</span>
-              <span>{alert.column_name} {alert.condition} {alert.threshold_value}</span>
+              <span>{formatAlertRules(alert)}</span>
               <span>{alert.channels.join(", ")}</span>
               <div className="row-actions">
                 <button className="icon-button" onClick={() => runAlert(alert.id)} title="Executar agora" disabled={loading}><Play size={16} /></button>
@@ -1126,6 +1173,41 @@ function toggleChannel(event, channel, setAlertForm) {
       : current.channels.filter((item) => item !== channel);
     return { ...current, channels };
   });
+}
+
+function addAlertRule(setAlertForm) {
+  setAlertForm((current) => ({
+    ...current,
+    rules: [...current.rules, { column_name: "", condition: ">", threshold_value: "" }],
+  }));
+}
+
+function removeAlertRule(setAlertForm, index) {
+  setAlertForm((current) => {
+    if (current.rules.length === 1) {
+      return current;
+    }
+    return { ...current, rules: current.rules.filter((_, ruleIndex) => ruleIndex !== index) };
+  });
+}
+
+function updateAlertRule(setAlertForm, index, field, value) {
+  setAlertForm((current) => ({
+    ...current,
+    rules: current.rules.map((rule, ruleIndex) => (
+      ruleIndex === index ? { ...rule, [field]: value } : rule
+    )),
+  }));
+}
+
+function formatAlertRules(alert) {
+  const rules = alert.rules?.length
+    ? alert.rules
+    : [{ column_name: alert.column_name, condition: alert.condition, threshold_value: alert.threshold_value }];
+  const logic = alert.rule_logic || "AND";
+  return rules
+    .map((rule, index) => `${index === 0 ? "" : `${logic} `}${rule.column_name} ${rule.condition} ${rule.threshold_value}`)
+    .join(" ");
 }
 
 function formatApiError(text) {

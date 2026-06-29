@@ -24,6 +24,8 @@ from app.services.rule_engine import execute_alert
 from app.services.tenant_limits import assert_can_create_alert
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
+VALID_CONDITIONS = {">", "<", "=", "==", ">=", "<=", "!="}
+VALID_RULE_LOGIC = {"AND", "OR"}
 
 
 @router.get("", response_model=list[AlertRead])
@@ -83,8 +85,7 @@ def create_alert(
     )
     if not data_source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fonte nao encontrada")
-    if payload.condition not in {">", "<", "=", "==", ">=", "<=", "!="}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Condicao invalida")
+    validate_alert_rules(payload.condition, payload.rules, payload.rule_logic)
     if not any(channel in {"email", "whatsapp"} for channel in payload.channels):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe ao menos um canal valido")
     alert = Alert(tenant_id=target_tenant_id, **payload.model_dump())
@@ -128,7 +129,13 @@ def update_alert(
     if not alert:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta nao encontrado")
     before = alert_snapshot(alert)
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    validate_alert_rules(
+        update_data.get("condition", alert.condition),
+        update_data.get("rules", alert.rules),
+        update_data.get("rule_logic", alert.rule_logic),
+    )
+    for key, value in update_data.items():
         setattr(alert, key, value)
     add_alert_audit(db, alert, current_user.id, "updated", before, alert_snapshot(alert))
     db.commit()
@@ -283,6 +290,8 @@ def alert_snapshot(alert: Alert) -> dict:
         "column_name": alert.column_name,
         "condition": alert.condition,
         "threshold_value": alert.threshold_value,
+        "rules": alert.rules,
+        "rule_logic": alert.rule_logic,
         "frequency": alert.frequency,
         "recipients": alert.recipients,
         "channels": alert.channels,
@@ -308,3 +317,16 @@ def add_alert_audit(
             after=after,
         )
     )
+
+
+def validate_alert_rules(condition: str, rules: list | None, rule_logic: str | None) -> None:
+    if condition not in VALID_CONDITIONS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Condicao invalida")
+    if (rule_logic or "AND").upper() not in VALID_RULE_LOGIC:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Operador logico invalido")
+    for rule in rules or []:
+        rule_condition = rule.condition if hasattr(rule, "condition") else rule.get("condition")
+        rule_column = rule.column_name if hasattr(rule, "column_name") else rule.get("column_name")
+        rule_value = rule.threshold_value if hasattr(rule, "threshold_value") else rule.get("threshold_value")
+        if not str(rule_column or "").strip() or rule_condition not in VALID_CONDITIONS or not str(rule_value or "").strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Regra composta invalida")

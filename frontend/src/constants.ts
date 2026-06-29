@@ -5,3 +5,5 @@ export const SENTINELA_LOGIN_URL =
   import.meta.env.VITE_SENTINELA_LOGIN_URL || "https://app.impactocg.com/login";
 
 export const COMPANY_DOMAIN = "impactocg.com";
+
+export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";

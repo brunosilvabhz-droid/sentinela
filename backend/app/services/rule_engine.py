@@ -28,12 +28,23 @@ def evaluate_alert(alert: Alert, db: Session | None = None) -> RuleResult:
         dataframe = load_managed_dataframe(db, alert)
     else:
         dataframe = load_data_source(alert.data_source)
-    if alert.column_name not in dataframe.columns:
-        raise ValueError(f"Coluna '{alert.column_name}' nao existe na fonte")
-
-    series = dataframe[alert.column_name]
-    threshold = _coerce_threshold(series, alert.threshold_value)
-    mask = _build_mask(series, alert.condition, threshold)
+    rules = _alert_rules(alert)
+    mask = None
+    for rule in rules:
+        column_name = rule["column_name"]
+        if column_name not in dataframe.columns:
+            raise ValueError(f"Coluna '{column_name}' nao existe na fonte")
+        series = dataframe[column_name]
+        threshold = _coerce_threshold(series, rule["threshold_value"])
+        rule_mask = _build_mask(series, rule["condition"], threshold)
+        if mask is None:
+            mask = rule_mask
+        elif (alert.rule_logic or "AND").upper() == "OR":
+            mask = mask | rule_mask
+        else:
+            mask = mask & rule_mask
+    if mask is None:
+        raise ValueError("Alerta sem regras configuradas")
     matches = dataframe[mask]
     matched_records = matches.where(pd.notnull(matches), None).to_dict(orient="records")
     return RuleResult(
@@ -160,6 +171,25 @@ def _build_mask(series: pd.Series, condition: str, threshold):
     if condition == "!=":
         return comparable != threshold
     raise ValueError(f"Condicao nao suportada: {condition}")
+
+
+def _alert_rules(alert: Alert) -> list[dict[str, str]]:
+    if alert.rules:
+        return [
+            {
+                "column_name": str(rule.get("column_name", "")).strip(),
+                "condition": str(rule.get("condition", "")).strip(),
+                "threshold_value": str(rule.get("threshold_value", "")).strip(),
+            }
+            for rule in alert.rules
+        ]
+    return [
+        {
+            "column_name": alert.column_name,
+            "condition": alert.condition,
+            "threshold_value": alert.threshold_value,
+        }
+    ]
 
 
 def load_managed_dataframe(db: Session, alert: Alert) -> pd.DataFrame:

@@ -16,6 +16,8 @@ class Alert(Base):
     column_name: Mapped[str] = mapped_column(String(160), nullable=False)
     condition: Mapped[str] = mapped_column(String(8), nullable=False)
     threshold_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    rules: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    rule_logic: Mapped[str] = mapped_column(String(3), default="AND", nullable=False)
     frequency: Mapped[str] = mapped_column(String(120), default="*/15 * * * *", nullable=False)
     recipients: Mapped[list] = mapped_column(JSON, nullable=False)
     channels: Mapped[list] = mapped_column(JSON, nullable=False)
