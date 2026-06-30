@@ -876,6 +876,35 @@ th {
   margin: 0;
 }
 
+.channel-test-result {
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.channel-test-result span {
+  overflow-wrap: anywhere;
+}
+
+.channel-test-result.success {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.channel-test-result.error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+.channel-test-result.pending {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+
 .simulation-panel {
   border-color: #99f6e4;
 }

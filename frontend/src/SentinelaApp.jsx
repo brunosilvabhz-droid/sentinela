@@ -182,6 +182,7 @@ export default function SentinelaApp() {
     whatsapp: "",
     message: "Teste SENTINELA: canal configurado com sucesso.",
   });
+  const [channelTestResult, setChannelTestResult] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -596,7 +597,7 @@ export default function SentinelaApp() {
 
   async function testEmailChannel(event) {
     event.preventDefault();
-    await runAction(async () => {
+    await runChannelTest(async () => {
       const result = await api("/settings/test-email", {
         method: "POST",
         body: JSON.stringify({
@@ -604,13 +605,18 @@ export default function SentinelaApp() {
           message: channelTestForm.message,
         }),
       });
-      setMessage(`Teste de e-mail enviado via ${result.provider || "SMTP"}.`);
+      return {
+        channel: "E-mail",
+        status: "success",
+        text: `Teste enviado via ${result.provider || "SMTP"}.`,
+        detail: result.detail || `Servidor aceitou o e-mail para ${channelTestForm.email}.`,
+      };
     });
   }
 
   async function testWhatsAppChannel(event) {
     event.preventDefault();
-    await runAction(async () => {
+    await runChannelTest(async () => {
       const result = await api("/settings/test-whatsapp", {
         method: "POST",
         body: JSON.stringify({
@@ -619,8 +625,32 @@ export default function SentinelaApp() {
           message: channelTestForm.message,
         }),
       });
-      setMessage(`Teste de WhatsApp enviado via ${result.provider || "Meta"}.`);
+      return {
+        channel: "WhatsApp",
+        status: "success",
+        text: `Teste enviado via ${result.provider || "Meta"}.`,
+        detail: result.detail || `Provedor aceitou a mensagem para ${channelTestForm.whatsapp}.`,
+      };
     });
+  }
+
+  async function runChannelTest(action) {
+    setLoading(true);
+    setMessage("");
+    setChannelTestResult({ status: "pending", channel: "Teste", text: "Enviando teste...", detail: "" });
+    try {
+      const result = await action();
+      setChannelTestResult(result);
+    } catch (error) {
+      setChannelTestResult({
+        channel: "Teste",
+        status: "error",
+        text: "Falha no teste de envio.",
+        detail: error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function deactivateSource(id) {
@@ -664,6 +694,7 @@ export default function SentinelaApp() {
     setCurrentUser(null);
     setPreview(null);
     setSourceAttributes([]);
+    setChannelTestResult(null);
     setMessage("Sessao encerrada.");
   }
 
@@ -746,6 +777,7 @@ export default function SentinelaApp() {
           <CompaniesView
             loading={loading}
             channelTestForm={channelTestForm}
+            channelTestResult={channelTestResult}
             setSignupForm={setSignupForm}
             setChannelTestForm={setChannelTestForm}
             setWhatsAppTenantForm={setWhatsAppTenantForm}
@@ -1044,6 +1076,7 @@ function AuthPanel({
 
 function CompaniesView({
   channelTestForm,
+  channelTestResult,
   loading,
   setChannelTestForm,
   setSignupForm,
@@ -1191,6 +1224,12 @@ function CompaniesView({
             </button>
           </form>
         </div>
+        {channelTestResult && (
+          <div className={`channel-test-result ${channelTestResult.status}`}>
+            <strong>{channelTestResult.channel}: {channelTestResult.text}</strong>
+            {channelTestResult.detail && <span>{channelTestResult.detail}</span>}
+          </div>
+        )}
       </section>
 
       <section className="panel">
