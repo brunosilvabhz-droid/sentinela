@@ -6,7 +6,7 @@ from app.schemas.common import ORMModel
 
 
 class UserCreate(BaseModel):
-    tenant_id: int
+    tenant_id: int | None = None
     name: str
     email: EmailStr
     password: str = Field(min_length=8)

@@ -57,6 +57,7 @@ const emptyAlertForm = {
 };
 
 const emptyUserForm = {
+  tenant_id: "",
   name: "",
   email: "",
   password: "",
@@ -221,6 +222,9 @@ export default function SentinelaApp() {
       userList = await api("/users", {}, authToken);
     }
     if (isSuper && targetTenantId) {
+      userList = await api(`/users?tenant_id=${targetTenantId}`, {}, authToken);
+    }
+    if (isSuper && targetTenantId) {
       agentList = await api(`/ingestion/agents?tenant_id=${targetTenantId}`, {}, authToken);
     }
     if (isSuper) {
@@ -240,7 +244,7 @@ export default function SentinelaApp() {
     if (me.role !== "super_admin" && activeTab === "sources") {
       setActiveTab("dashboard");
     }
-    if (me.role !== "admin" && activeTab === "users") {
+    if (me.role !== "admin" && me.role !== "super_admin" && activeTab === "users") {
       setActiveTab("dashboard");
     }
     if (me.role !== "super_admin" && activeTab === "companies") {
@@ -308,11 +312,16 @@ export default function SentinelaApp() {
   async function createUser(event) {
     event.preventDefault();
     await runAction(async () => {
-      await api("/users", {
+      const targetTenantId = isPlatformAdmin ? (userForm.tenant_id || selectedTenantId) : "";
+      const tenantQuery = isPlatformAdmin ? `?tenant_id=${targetTenantId}` : "";
+      await api(`/users${tenantQuery}`, {
         method: "POST",
-        body: JSON.stringify(userForm),
+        body: JSON.stringify({
+          ...userForm,
+          tenant_id: isPlatformAdmin ? Number(targetTenantId) : null,
+        }),
       });
-      setUserForm(emptyUserForm);
+      setUserForm({ ...emptyUserForm, tenant_id: targetTenantId });
       setMessage("Usuario criado.");
       await loadWorkspace();
     });
@@ -473,7 +482,7 @@ export default function SentinelaApp() {
           {isPlatformAdmin && <NavItem active={activeTab === "sources"} icon={<Database size={18} />} label="Fontes" onClick={() => setActiveTab("sources")} />}
           {(isPlatformAdmin || canManageTenant) && <NavItem active={activeTab === "alerts"} icon={<Bell size={18} />} label="Alertas" onClick={() => setActiveTab("alerts")} />}
           <NavItem active={activeTab === "history"} icon={<History size={18} />} label="Relatorios" onClick={() => setActiveTab("history")} />
-          {canManageTenant && <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />}
+          {(isPlatformAdmin || canManageTenant) && <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />}
           {isPlatformAdmin && <NavItem active={activeTab === "settings"} icon={<Settings size={18} />} label="Configurações" onClick={() => setActiveTab("settings")} />}
         </nav>
       </aside>
@@ -611,11 +620,19 @@ export default function SentinelaApp() {
             occurrences={occurrences}
           />
         )}
-        {token && canManageTenant && activeTab === "users" && (
+        {token && (isPlatformAdmin || canManageTenant) && activeTab === "users" && (
           <UsersView
             createUser={createUser}
+            isPlatformAdmin={isPlatformAdmin}
             loading={loading}
+            selectedTenantId={selectedTenantId}
+            setSelectedTenantId={(tenantId) => {
+              setSelectedTenantId(tenantId);
+              setUserForm((current) => ({ ...current, tenant_id: tenantId }));
+              runAction(() => loadWorkspace(token, tenantId), { quiet: true });
+            }}
             setUserForm={setUserForm}
+            tenants={tenants.filter((tenant) => tenant.document !== "SENTINELA")}
             userForm={userForm}
             users={users}
           />
@@ -1148,9 +1165,27 @@ function AcknowledgementPage({ ackToken }) {
   );
 }
 
-function UsersView({ createUser, loading, setUserForm, userForm, users }) {
+function UsersView({ createUser, isPlatformAdmin, loading, selectedTenantId, setSelectedTenantId, setUserForm, tenants, userForm, users }) {
+  const selectedUserTenantId = userForm.tenant_id || selectedTenantId;
   return (
     <>
+      {isPlatformAdmin && (
+        <section className="panel">
+          <div className="panel-title with-action">
+            <div>
+              <h2>Empresa selecionada</h2>
+              <p>Escolha a empresa cliente para listar e cadastrar usuarios.</p>
+            </div>
+            <Building2 size={18} />
+          </div>
+          <label>Empresa
+            <select value={selectedTenantId} onChange={(event) => setSelectedTenantId(event.target.value)}>
+              <option value="">Selecione</option>
+              {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+            </select>
+          </label>
+        </section>
+      )}
       <section className="panel form-grid">
         <div className="panel-title with-action">
           <h2>Novo usuario</h2>
@@ -1166,7 +1201,7 @@ function UsersView({ createUser, loading, setUserForm, userForm, users }) {
               <option value="admin">admin</option>
             </select>
           </label>
-          <button disabled={loading || !userForm.name || !userForm.email || userForm.password.length < 8}>
+          <button disabled={loading || (isPlatformAdmin && !selectedUserTenantId) || !userForm.name || !userForm.email || userForm.password.length < 8}>
             <Plus size={16} /> Criar usuario
           </button>
         </form>
