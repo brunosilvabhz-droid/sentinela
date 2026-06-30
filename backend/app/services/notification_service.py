@@ -1,5 +1,8 @@
 import smtplib
 from email.message import EmailMessage
+import json
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from twilio.rest import Client
 from sqlalchemy.orm import Session
@@ -54,6 +57,41 @@ def send_email(recipients: list[str], subject: str, body: str) -> None:
 
 def send_whatsapp(recipients: list[str], body: str) -> None:
     settings = get_settings()
+    if settings.whatsapp_provider.lower() == "twilio":
+        send_whatsapp_twilio(recipients, body)
+        return
+    send_whatsapp_meta(recipients, body)
+
+
+def send_whatsapp_meta(recipients: list[str], body: str) -> None:
+    settings = get_settings()
+    if not settings.meta_whatsapp_token or not settings.meta_whatsapp_phone_number_id:
+        return
+
+    for recipient in recipients:
+        phone_number = normalize_whatsapp_number(recipient)
+        if not phone_number:
+            continue
+        payload = build_meta_whatsapp_payload(phone_number, body)
+        request = Request(
+            f"https://graph.facebook.com/{settings.meta_whatsapp_api_version}/{settings.meta_whatsapp_phone_number_id}/messages",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {settings.meta_whatsapp_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=20) as response:
+                response.read()
+        except HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Erro ao enviar WhatsApp pela Meta: {exc.code} {error_body}") from exc
+
+
+def send_whatsapp_twilio(recipients: list[str], body: str) -> None:
+    settings = get_settings()
     if not settings.twilio_account_sid or not settings.twilio_auth_token:
         return
 
@@ -66,6 +104,43 @@ def send_whatsapp(recipients: list[str], body: str) -> None:
         else:
             continue
         client.messages.create(from_=settings.twilio_whatsapp_from, to=to, body=body)
+
+
+def build_meta_whatsapp_payload(phone_number: str, body: str) -> dict:
+    settings = get_settings()
+    payload: dict = {
+        "messaging_product": "whatsapp",
+        "to": phone_number,
+    }
+    if settings.meta_whatsapp_template_name:
+        payload.update(
+            {
+                "type": "template",
+                "template": {
+                    "name": settings.meta_whatsapp_template_name,
+                    "language": {"code": settings.meta_whatsapp_template_language},
+                    "components": [
+                        {
+                            "type": "body",
+                            "parameters": [{"type": "text", "text": body[:1024]}],
+                        }
+                    ],
+                },
+            }
+        )
+        return payload
+    payload.update({"type": "text", "text": {"preview_url": False, "body": body[:4096]}})
+    return payload
+
+
+def normalize_whatsapp_number(recipient: str) -> str:
+    value = recipient.strip()
+    if not value or "@" in value:
+        return ""
+    if value.startswith("whatsapp:"):
+        value = value.removeprefix("whatsapp:")
+    digits = "".join(char for char in value if char.isdigit())
+    return digits
 
 
 def get_app_setting(db: Session, key: str) -> str:

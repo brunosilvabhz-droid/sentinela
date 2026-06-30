@@ -39,6 +39,18 @@ services:
         sync: false
       - key: SMTP_FROM_EMAIL
         sync: false
+      - key: WHATSAPP_PROVIDER
+        value: meta
+      - key: META_WHATSAPP_TOKEN
+        sync: false
+      - key: META_WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: META_WHATSAPP_API_VERSION
+        value: v20.0
+      - key: META_WHATSAPP_TEMPLATE_NAME
+        sync: false
+      - key: META_WHATSAPP_TEMPLATE_LANGUAGE
+        value: pt_BR
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
@@ -85,6 +97,18 @@ services:
         sync: false
       - key: SMTP_FROM_EMAIL
         sync: false
+      - key: WHATSAPP_PROVIDER
+        value: meta
+      - key: META_WHATSAPP_TOKEN
+        sync: false
+      - key: META_WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: META_WHATSAPP_API_VERSION
+        value: v20.0
+      - key: META_WHATSAPP_TEMPLATE_NAME
+        sync: false
+      - key: META_WHATSAPP_TEMPLATE_LANGUAGE
+        value: pt_BR
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
