@@ -17,7 +17,7 @@ import {
   Building2,
   Users,
 } from "lucide-react";
-import { API_URL } from "./constants";
+import { API_FALLBACK_URLS, API_URL } from "./constants";
 import "./styles.css";
 
 const emptySourceForm = {
@@ -186,7 +186,7 @@ export default function SentinelaApp() {
     if (!(options.body instanceof FormData)) {
       headers["Content-Type"] = "application/json";
     }
-    const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+    const response = await apiFetch(path, { ...options, headers });
     if (!response.ok) {
       const text = await response.text();
       throw new Error(formatApiError(text));
@@ -1314,7 +1314,7 @@ function AcknowledgementPage({ ackToken }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/alerts/ack/${ackToken}`)
+    apiFetch(`/alerts/ack/${ackToken}`)
       .then((response) => response.ok ? response.json() : Promise.reject(response))
       .then(setOccurrence)
       .catch(() => setMessage("Confirmacao nao encontrada."));
@@ -1325,7 +1325,7 @@ function AcknowledgementPage({ ackToken }) {
     setLoading(true);
     setMessage("");
     try {
-      const response = await fetch(`${API_URL}/alerts/ack/${ackToken}`, {
+      const response = await apiFetch(`/alerts/ack/${ackToken}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1599,4 +1599,16 @@ function buildCollectorConfig({ token, sourceId }) {
     null,
     2,
   );
+}
+
+async function apiFetch(path, options = {}) {
+  let lastError;
+  for (const baseUrl of API_FALLBACK_URLS) {
+    try {
+      return await fetch(`${baseUrl}${path}`, options);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Nao foi possivel conectar na API.");
 }
