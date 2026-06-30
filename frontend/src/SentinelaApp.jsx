@@ -597,21 +597,21 @@ export default function SentinelaApp() {
   async function testEmailChannel(event) {
     event.preventDefault();
     await runAction(async () => {
-      await api("/settings/test-email", {
+      const result = await api("/settings/test-email", {
         method: "POST",
         body: JSON.stringify({
           recipient: channelTestForm.email,
           message: channelTestForm.message,
         }),
       });
-      setMessage("Teste de e-mail enviado.");
+      setMessage(`Teste de e-mail enviado via ${result.provider || "SMTP"}.`);
     });
   }
 
   async function testWhatsAppChannel(event) {
     event.preventDefault();
     await runAction(async () => {
-      await api("/settings/test-whatsapp", {
+      const result = await api("/settings/test-whatsapp", {
         method: "POST",
         body: JSON.stringify({
           tenant_id: Number(channelTestForm.tenant_id),
@@ -619,7 +619,7 @@ export default function SentinelaApp() {
           message: channelTestForm.message,
         }),
       });
-      setMessage("Teste de WhatsApp enviado.");
+      setMessage(`Teste de WhatsApp enviado via ${result.provider || "Meta"}.`);
     });
   }
 

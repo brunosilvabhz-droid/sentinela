@@ -15,3 +15,4 @@ class NotificationTestRequest(BaseModel):
 class NotificationTestResponse(BaseModel):
     status: str
     recipient: str
+    provider: str | None = None

@@ -69,6 +69,29 @@ def send_email(
             log_delivery(db, alert, occurrence, "email", recipient, "error", "smtp", str(exc))
 
 
+def send_test_email(recipient: str, subject: str, body: str) -> str:
+    settings = get_settings()
+    if "@" not in recipient:
+        raise RuntimeError("Informe um e-mail valido.")
+    if not settings.smtp_host:
+        raise RuntimeError("SMTP nao configurado. Preencha SMTP_HOST, SMTP_PORT, SMTP_FROM_EMAIL e credenciais se necessario.")
+
+    message = EmailMessage()
+    message["From"] = settings.smtp_from_email
+    message["To"] = recipient
+    message["Subject"] = subject
+    message.set_content(body)
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
+            if settings.smtp_username:
+                smtp.starttls()
+                smtp.login(settings.smtp_username, settings.smtp_password)
+            smtp.send_message(message)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"Falha no SMTP: {exc}") from exc
+    return "smtp"
+
+
 def send_whatsapp(
     recipients: list[str],
     body: str,
@@ -86,6 +109,18 @@ def send_whatsapp(
         send_whatsapp_twilio(recipients, body, db=db, alert=alert, occurrence=occurrence)
         return
     send_whatsapp_meta(recipients, body, config, db=db, alert=alert, occurrence=occurrence)
+
+
+def send_test_whatsapp(recipient: str, body: str, tenant: Tenant | None = None) -> str:
+    config = resolve_whatsapp_config(tenant)
+    if not config.get("is_active", True):
+        raise RuntimeError("WhatsApp esta inativo para esta empresa.")
+    provider = config["provider"].lower()
+    if provider == "twilio":
+        send_test_whatsapp_twilio(recipient, body)
+        return "twilio"
+    send_test_whatsapp_meta(recipient, body, config)
+    return "meta"
 
 
 def has_dynamic_recipients(alert: Alert) -> bool:
@@ -149,6 +184,32 @@ def send_whatsapp_meta(
             log_delivery(db, alert, occurrence, "whatsapp", recipient, "error", "meta", str(exc))
 
 
+def send_test_whatsapp_meta(recipient: str, body: str, config: dict) -> None:
+    if not config["token"] or not config["phone_number_id"]:
+        raise RuntimeError("Meta WhatsApp incompleto. Configure token permanente e Phone Number ID da empresa.")
+    phone_number = normalize_whatsapp_number(recipient)
+    if not phone_number:
+        raise RuntimeError("Informe o WhatsApp com DDI e DDD, por exemplo +5531999999999.")
+    payload = build_meta_whatsapp_payload(phone_number, body, config)
+    request = Request(
+        f"https://graph.facebook.com/{config['api_version']}/{config['phone_number_id']}/messages",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {config['token']}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            response.read()
+    except HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Falha na Meta Cloud API: {exc.code} {error_body}") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"Falha ao conectar na Meta Cloud API: {exc}") from exc
+
+
 def send_whatsapp_twilio(
     recipients: list[str],
     body: str,
@@ -176,6 +237,23 @@ def send_whatsapp_twilio(
             log_delivery(db, alert, occurrence, "whatsapp", recipient, "sent", "twilio")
         except Exception as exc:  # noqa: BLE001
             log_delivery(db, alert, occurrence, "whatsapp", recipient, "error", "twilio", str(exc))
+
+
+def send_test_whatsapp_twilio(recipient: str, body: str) -> None:
+    settings = get_settings()
+    if not settings.twilio_account_sid or not settings.twilio_auth_token:
+        raise RuntimeError("Twilio nao configurado.")
+    if recipient.startswith("whatsapp:"):
+        to = recipient
+    elif recipient.startswith("+"):
+        to = f"whatsapp:{recipient}"
+    else:
+        raise RuntimeError("Informe o WhatsApp com DDI e DDD, por exemplo +5531999999999.")
+    try:
+        client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
+        client.messages.create(from_=settings.twilio_whatsapp_from, to=to, body=body)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"Falha na Twilio: {exc}") from exc
 
 
 def log_delivery(

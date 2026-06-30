@@ -7,7 +7,7 @@ from app.models.app_setting import AppSetting
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.settings import AlertCopySettings, NotificationTestRequest, NotificationTestResponse
-from app.services.notification_service import send_email, send_whatsapp
+from app.services.notification_service import send_test_email, send_test_whatsapp
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -43,8 +43,11 @@ def test_email_channel(
     payload: NotificationTestRequest,
     current_user: User = Depends(require_super_admin),
 ) -> NotificationTestResponse:
-    send_email([payload.recipient], "[SENTINELA] Teste de e-mail", payload.message)
-    return NotificationTestResponse(status="sent", recipient=payload.recipient)
+    try:
+        provider = send_test_email(payload.recipient, "[SENTINELA] Teste de e-mail", payload.message)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return NotificationTestResponse(status="sent", recipient=payload.recipient, provider=provider)
 
 
 @router.post("/test-whatsapp", response_model=NotificationTestResponse)
@@ -58,8 +61,11 @@ def test_whatsapp_channel(
     tenant = db.query(Tenant).filter(Tenant.id == payload.tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa nao encontrada")
-    send_whatsapp([payload.recipient], payload.message, tenant)
-    return NotificationTestResponse(status="sent", recipient=payload.recipient)
+    try:
+        provider = send_test_whatsapp(payload.recipient, payload.message, tenant)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return NotificationTestResponse(status="sent", recipient=payload.recipient, provider=provider)
 
 
 def get_setting(db: Session, key: str) -> str:
