@@ -37,7 +37,7 @@ O `render.yaml` ja conecta automaticamente:
 DATABASE_URL -> sentinela-db
 REDIS_URL    -> sentinela-redis
 JWT_SECRET_KEY -> gerado automaticamente
-FRONTEND_PUBLIC_URL -> https://sentinela-web.onrender.com
+FRONTEND_PUBLIC_URL -> https://app.impactocg.com
 ```
 
 Configure manualmente se quiser email/WhatsApp em producao:
@@ -48,29 +48,76 @@ SMTP_PORT
 SMTP_USERNAME
 SMTP_PASSWORD
 SMTP_FROM_EMAIL
+WHATSAPP_PROVIDER=meta
+META_WHATSAPP_TOKEN
+META_WHATSAPP_PHONE_NUMBER_ID
+META_WHATSAPP_TEMPLATE_NAME
+META_WHATSAPP_TEMPLATE_LANGUAGE=pt_BR
+
+Opcional, se usar Twilio como alternativa:
+
+```text
 TWILIO_ACCOUNT_SID
 TWILIO_AUTH_TOKEN
 TWILIO_WHATSAPP_FROM
 ```
 
-## 3. URL do Frontend
+## 3. Dominios de Producao
+
+Mapa recomendado:
+
+```text
+impactocg.com      -> landing page institucional da IMPACTO
+www.impactocg.com  -> landing page institucional da IMPACTO
+app.impactocg.com  -> sistema SENTINELA
+api.impactocg.com  -> API FastAPI
+```
+
+No Render:
+
+1. Abra o servico `sentinela-web`.
+2. Entre em `Settings` > `Custom Domains`.
+3. Adicione `impactocg.com`.
+4. Adicione `www.impactocg.com`.
+5. Adicione `app.impactocg.com`.
+6. Abra o servico `sentinela-api`.
+7. Entre em `Settings` > `Custom Domains`.
+8. Adicione `api.impactocg.com`.
+9. Copie exatamente os registros DNS que o Render mostrar para cada dominio.
+
+Na HostGator, no gerenciador de DNS do dominio `impactocg.com`, crie ou ajuste:
+
+```text
+Tipo   Nome   Destino
+A      @      IP informado pelo Render para impactocg.com
+CNAME  www    destino informado pelo Render para sentinela-web
+CNAME  app    destino informado pelo Render para sentinela-web
+CNAME  api    destino informado pelo Render para sentinela-api
+```
+
+Se existirem registros antigos de site para `@`, `www`, `app` ou `api`, remova ou substitua para evitar conflito. Como o site antigo nao sera mais usado, o dominio principal pode apontar direto para o Render.
+
+Depois que o DNS propagar, volte no Render e aguarde o status `Verified` nos dominios. O certificado HTTPS sera emitido automaticamente.
+
+## 4. URL do Frontend
 
 O frontend usa:
 
 ```text
-VITE_API_URL=https://sentinela-api.onrender.com/api/v1
+VITE_API_URL=https://api.impactocg.com/api/v1
+VITE_SENTINELA_LOGIN_URL=https://app.impactocg.com/app
 ```
 
-Se o Render gerar outro subdominio para a API, ajuste `VITE_API_URL` no servico `sentinela-web` e atualize:
+O backend deve aceitar os dominios do frontend:
 
 ```text
-CORS_ALLOWED_ORIGINS=https://SEU-FRONTEND.onrender.com
-FRONTEND_PUBLIC_URL=https://SEU-FRONTEND.onrender.com
+CORS_ALLOWED_ORIGINS=https://impactocg.com,https://www.impactocg.com,https://app.impactocg.com,https://sentinela-web.onrender.com
+FRONTEND_PUBLIC_URL=https://app.impactocg.com
 ```
 
 no servico `sentinela-api`.
 
-## 4. Migrations
+## 5. Migrations
 
 O backend roda automaticamente:
 
@@ -89,7 +136,7 @@ alembic upgrade head
 alembic revision --autogenerate -m "descricao"
 ```
 
-## 5. Comandos de Producao
+## 6. Comandos de Producao
 
 API:
 
@@ -121,7 +168,7 @@ Publish directory:
 frontend/dist
 ```
 
-## 6. SQL Server e ODBC
+## 7. SQL Server e ODBC
 
 O pacote Python `pyodbc` esta no `requirements.txt`, mas SQL Server exige o Microsoft ODBC Driver instalado no ambiente.
 
@@ -134,7 +181,7 @@ unixodbc
 
 Oracle usa `oracledb` em modo thin para conexoes comuns e geralmente nao precisa de Instant Client.
 
-## 7. Checklist Pos-Deploy
+## 8. Checklist Pos-Deploy
 
 1. Abrir `/health` da API.
 2. Abrir `/docs` da API.
@@ -147,4 +194,8 @@ Oracle usa `oracledb` em modo thin para conexoes comuns e geralmente nao precisa
 9. Conferir worker e beat nos logs do Render.
 10. Configurar SMTP real.
 11. Configurar Twilio WhatsApp.
-12. Trocar para planos pagos antes de clientes reais.
+12. Configurar os dominios customizados.
+13. Testar `https://impactocg.com`.
+14. Testar `https://app.impactocg.com`.
+15. Testar `https://api.impactocg.com/health`.
+16. Trocar para planos pagos antes de clientes reais.

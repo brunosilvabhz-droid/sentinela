@@ -7,10 +7,11 @@ import "./styles.css";
 
 function Root() {
   const path = window.location.pathname;
+  const hostname = window.location.hostname;
   if (path.startsWith("/landing-admin")) {
     return <LandingAdminPage />;
   }
-  if (path.startsWith("/app") || path.startsWith("/ack")) {
+  if (hostname === "app.impactocg.com" || path.startsWith("/app") || path.startsWith("/ack")) {
     return <SentinelaApp />;
   }
   return <LandingPage />;
