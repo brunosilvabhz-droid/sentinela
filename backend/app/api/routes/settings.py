@@ -62,10 +62,15 @@ def test_whatsapp_channel(
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa nao encontrada")
     try:
-        provider = send_test_whatsapp(payload.recipient, payload.message, tenant)
+        provider = send_test_whatsapp(payload.recipient, payload.message, tenant, payload.template_parameters or [])
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return NotificationTestResponse(status="sent", recipient=payload.recipient, provider=provider)
+    return NotificationTestResponse(
+        status="sent",
+        recipient=payload.recipient,
+        provider=provider,
+        detail="Template enviado com parametros." if payload.template_parameters else None,
+    )
 
 
 def get_setting(db: Session, key: str) -> str:

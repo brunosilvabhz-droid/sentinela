@@ -876,6 +876,20 @@ th {
   margin: 0;
 }
 
+.template-parameter-grid {
+  background: #ffffff;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.template-parameter-grid strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
 .channel-test-result {
   border-radius: 8px;
   display: grid;

@@ -111,7 +111,12 @@ def send_whatsapp(
     send_whatsapp_meta(recipients, body, config, db=db, alert=alert, occurrence=occurrence)
 
 
-def send_test_whatsapp(recipient: str, body: str, tenant: Tenant | None = None) -> str:
+def send_test_whatsapp(
+    recipient: str,
+    body: str,
+    tenant: Tenant | None = None,
+    template_parameters: list[str] | None = None,
+) -> str:
     config = resolve_whatsapp_config(tenant)
     if not config.get("is_active", True):
         raise RuntimeError("WhatsApp esta inativo para esta empresa.")
@@ -119,7 +124,7 @@ def send_test_whatsapp(recipient: str, body: str, tenant: Tenant | None = None) 
     if provider == "twilio":
         send_test_whatsapp_twilio(recipient, body)
         return "twilio"
-    send_test_whatsapp_meta(recipient, body, config)
+    send_test_whatsapp_meta(recipient, body, config, template_parameters or [])
     return "meta"
 
 
@@ -184,13 +189,16 @@ def send_whatsapp_meta(
             log_delivery(db, alert, occurrence, "whatsapp", recipient, "error", "meta", str(exc))
 
 
-def send_test_whatsapp_meta(recipient: str, body: str, config: dict) -> None:
+def send_test_whatsapp_meta(recipient: str, body: str, config: dict, template_parameters: list[str]) -> None:
     if not config["token"] or not config["phone_number_id"]:
         raise RuntimeError("Meta WhatsApp incompleto. Configure token permanente e Phone Number ID da empresa.")
     phone_number = normalize_whatsapp_number(recipient)
     if not phone_number:
         raise RuntimeError("Informe o WhatsApp com DDI e DDD, por exemplo +5531999999999.")
-    payload = build_meta_whatsapp_payload(phone_number, body, config)
+    if config["template_name"] and template_parameters:
+        payload = build_meta_whatsapp_template_payload(phone_number, config, template_parameters)
+    else:
+        payload = build_meta_whatsapp_payload(phone_number, body, config)
     request = Request(
         f"https://graph.facebook.com/{config['api_version']}/{config['phone_number_id']}/messages",
         data=json.dumps(payload).encode("utf-8"),
@@ -307,6 +315,27 @@ def build_meta_whatsapp_payload(phone_number: str, body: str, config: dict) -> d
         return payload
     payload.update({"type": "text", "text": {"preview_url": False, "body": body[:4096]}})
     return payload
+
+
+def build_meta_whatsapp_template_payload(phone_number: str, config: dict, parameters: list[str]) -> dict:
+    clean_parameters = [str(value).strip() for value in parameters if str(value).strip()]
+    if not clean_parameters:
+        raise RuntimeError("Informe ao menos uma variavel do template.")
+    return {
+        "messaging_product": "whatsapp",
+        "to": phone_number,
+        "type": "template",
+        "template": {
+            "name": config["template_name"],
+            "language": {"code": config["template_language"]},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": value} for value in clean_parameters],
+                }
+            ],
+        },
+    }
 
 
 def resolve_whatsapp_config(tenant: Tenant | None = None) -> dict:

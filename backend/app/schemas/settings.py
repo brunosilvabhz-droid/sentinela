@@ -10,9 +10,11 @@ class NotificationTestRequest(BaseModel):
     tenant_id: int | None = None
     recipient: str
     message: str = "Teste SENTINELA: canal configurado com sucesso."
+    template_parameters: list[str] | None = None
 
 
 class NotificationTestResponse(BaseModel):
     status: str
     recipient: str
     provider: str | None = None
+    detail: str | None = None

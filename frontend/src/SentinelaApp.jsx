@@ -181,6 +181,7 @@ export default function SentinelaApp() {
     email: "",
     whatsapp: "",
     message: "Teste SENTINELA: canal configurado com sucesso.",
+    whatsapp_template_parameters: ["Nome do paciente", "12/05/2026", "15:00h"],
   });
   const [channelTestResult, setChannelTestResult] = useState(null);
   const [message, setMessage] = useState("");
@@ -623,6 +624,7 @@ export default function SentinelaApp() {
           tenant_id: Number(channelTestForm.tenant_id),
           recipient: channelTestForm.whatsapp,
           message: channelTestForm.message,
+          template_parameters: channelTestForm.whatsapp_template_parameters,
         }),
       });
       return {
@@ -1206,6 +1208,18 @@ function CompaniesView({
                 placeholder="+5531999999999"
               />
             </label>
+            <div className="template-parameter-grid">
+              <strong>Variaveis do template</strong>
+              {channelTestForm.whatsapp_template_parameters.map((value, index) => (
+                <label key={index}>{`{{${index + 1}}}`}
+                  <input
+                    value={value}
+                    onChange={(event) => updateChannelTemplateParameter(setChannelTestForm, index, event.target.value)}
+                    placeholder={index === 0 ? "Nome do paciente" : index === 1 ? "12/05/2026" : "15:00h"}
+                  />
+                </label>
+              ))}
+            </div>
             <button disabled={loading || !channelTestForm.tenant_id || !channelTestForm.whatsapp} type="submit">
               <Bell size={16} /> Testar WhatsApp
             </button>
@@ -1866,6 +1880,15 @@ function updateMessageVariable(setAlertForm, variable, columnName) {
       ...(current.message_variables || {}),
       [variable]: columnName,
     },
+  }));
+}
+
+function updateChannelTemplateParameter(setChannelTestForm, index, value) {
+  setChannelTestForm((current) => ({
+    ...current,
+    whatsapp_template_parameters: current.whatsapp_template_parameters.map((item, itemIndex) => (
+      itemIndex === index ? value : item
+    )),
   }));
 }
 
