@@ -155,6 +155,8 @@ export default function SentinelaApp() {
   const [occurrences, setOccurrences] = useState([]);
   const [acknowledgements, setAcknowledgements] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [deliveryLogs, setDeliveryLogs] = useState([]);
+  const [sourceHealth, setSourceHealth] = useState([]);
   const [users, setUsers] = useState([]);
   const [agents, setAgents] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -174,6 +176,12 @@ export default function SentinelaApp() {
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [whatsAppTenantForm, setWhatsAppTenantForm] = useState(emptyWhatsAppTenantForm);
   const [appSettings, setAppSettings] = useState({ alert_copy_email: "", alert_copy_whatsapp: "" });
+  const [channelTestForm, setChannelTestForm] = useState({
+    tenant_id: "",
+    email: "",
+    whatsapp: "",
+    message: "Teste SENTINELA: canal configurado com sucesso.",
+  });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -287,6 +295,8 @@ export default function SentinelaApp() {
     let occurrenceList = [];
     let acknowledgementList = [];
     let auditLogList = [];
+    let deliveryLogList = [];
+    let healthList = [];
     let dashboard = { sent_alerts: 0, active_alerts: 0, inactive_alerts: 0, executions_by_status: {} };
     let targetTenantId = tenantOverride;
     const isSuper = me.role === "super_admin";
@@ -309,8 +319,12 @@ export default function SentinelaApp() {
         api(`/alerts/occurrences${tenantQuery}`, {}, authToken),
         api(`/alerts/acknowledgements${tenantQuery}`, {}, authToken),
       ]);
+      deliveryLogList = await api(`/alerts/delivery-logs${tenantQuery}`, {}, authToken);
       if (me.role !== "user") {
-        auditLogList = await api(`/alerts/audit-logs${tenantQuery}`, {}, authToken);
+        [auditLogList, healthList] = await Promise.all([
+          api(`/alerts/audit-logs${tenantQuery}`, {}, authToken),
+          api(`/data-sources/health${tenantQuery}`, {}, authToken),
+        ]);
       }
     }
     if (me.role === "admin") {
@@ -333,11 +347,16 @@ export default function SentinelaApp() {
     setOccurrences(occurrenceList);
     setAcknowledgements(acknowledgementList);
     setAuditLogs(auditLogList);
+    setDeliveryLogs(deliveryLogList);
+    setSourceHealth(healthList);
     setUsers(userList);
     setAgents(agentList);
     setTenants(tenantList);
     if (me.role !== "super_admin" && activeTab === "sources") {
       setActiveTab("dashboard");
+    }
+    if (me.role === "user" && activeTab === "health") {
+      setActiveTab("history");
     }
     if (me.role !== "admin" && me.role !== "super_admin" && activeTab === "users") {
       setActiveTab("dashboard");
@@ -575,6 +594,35 @@ export default function SentinelaApp() {
     });
   }
 
+  async function testEmailChannel(event) {
+    event.preventDefault();
+    await runAction(async () => {
+      await api("/settings/test-email", {
+        method: "POST",
+        body: JSON.stringify({
+          recipient: channelTestForm.email,
+          message: channelTestForm.message,
+        }),
+      });
+      setMessage("Teste de e-mail enviado.");
+    });
+  }
+
+  async function testWhatsAppChannel(event) {
+    event.preventDefault();
+    await runAction(async () => {
+      await api("/settings/test-whatsapp", {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: Number(channelTestForm.tenant_id),
+          recipient: channelTestForm.whatsapp,
+          message: channelTestForm.message,
+        }),
+      });
+      setMessage("Teste de WhatsApp enviado.");
+    });
+  }
+
   async function deactivateSource(id) {
     await runAction(async () => {
       await api(`/data-sources/${id}?tenant_id=${selectedTenantId}`, { method: "DELETE" });
@@ -607,6 +655,8 @@ export default function SentinelaApp() {
     setOccurrences([]);
     setAcknowledgements([]);
     setAuditLogs([]);
+    setDeliveryLogs([]);
+    setSourceHealth([]);
     setUsers([]);
     setAgents([]);
     setTenants([]);
@@ -628,6 +678,7 @@ export default function SentinelaApp() {
           <NavItem active={activeTab === "dashboard"} icon={<Activity size={18} />} label="Dashboard" onClick={() => setActiveTab("dashboard")} />
           {isPlatformAdmin && <NavItem active={activeTab === "companies"} icon={<Building2 size={18} />} label="Empresas" onClick={() => setActiveTab("companies")} />}
           {isPlatformAdmin && <NavItem active={activeTab === "sources"} icon={<Database size={18} />} label="Fontes" onClick={() => setActiveTab("sources")} />}
+          {(isPlatformAdmin || canManageTenant) && <NavItem active={activeTab === "health"} icon={<Eye size={18} />} label="Saude" onClick={() => setActiveTab("health")} />}
           {(isPlatformAdmin || canManageTenant) && <NavItem active={activeTab === "alerts"} icon={<Bell size={18} />} label="Alertas" onClick={() => setActiveTab("alerts")} />}
           <NavItem active={activeTab === "history"} icon={<History size={18} />} label="Relatorios" onClick={() => setActiveTab("history")} />
           {(isPlatformAdmin || canManageTenant) && <NavItem active={activeTab === "users"} icon={<Users size={18} />} label="Usuarios" onClick={() => setActiveTab("users")} />}
@@ -694,10 +745,14 @@ export default function SentinelaApp() {
         {token && isPlatformAdmin && activeTab === "companies" && (
           <CompaniesView
             loading={loading}
+            channelTestForm={channelTestForm}
             setSignupForm={setSignupForm}
+            setChannelTestForm={setChannelTestForm}
             setWhatsAppTenantForm={setWhatsAppTenantForm}
             signupCompany={signupCompany}
             signupForm={signupForm}
+            testEmailChannel={testEmailChannel}
+            testWhatsAppChannel={testWhatsAppChannel}
             tenants={tenants.filter((tenant) => tenant.document !== "SENTINELA")}
             updateTenantWhatsApp={updateTenantWhatsApp}
             whatsAppTenantForm={whatsAppTenantForm}
@@ -738,6 +793,10 @@ export default function SentinelaApp() {
           />
         )}
 
+        {token && (isPlatformAdmin || canManageTenant) && activeTab === "health" && (
+          <HealthView sourceHealth={sourceHealth} />
+        )}
+
         {token && (isPlatformAdmin || canManageTenant) && activeTab === "alerts" && (
           <AlertsView
             activeAlerts={activeAlerts}
@@ -769,6 +828,7 @@ export default function SentinelaApp() {
           <HistoryView
             acknowledgements={acknowledgements}
             auditLogs={auditLogs}
+            deliveryLogs={deliveryLogs}
             executions={executions}
             occurrences={occurrences}
             updateOccurrence={updateOccurrence}
@@ -982,7 +1042,20 @@ function AuthPanel({
   );
 }
 
-function CompaniesView({ loading, setSignupForm, setWhatsAppTenantForm, signupCompany, signupForm, tenants, updateTenantWhatsApp, whatsAppTenantForm }) {
+function CompaniesView({
+  channelTestForm,
+  loading,
+  setChannelTestForm,
+  setSignupForm,
+  setWhatsAppTenantForm,
+  signupCompany,
+  signupForm,
+  tenants,
+  testEmailChannel,
+  testWhatsAppChannel,
+  updateTenantWhatsApp,
+  whatsAppTenantForm,
+}) {
   return (
     <>
       <section className="panel form-grid">
@@ -1067,6 +1140,59 @@ function CompaniesView({ loading, setSignupForm, setWhatsAppTenantForm, signupCo
         </form>
       </section>
 
+      <section className="panel form-grid">
+        <div className="panel-title with-action">
+          <div>
+            <h2>Teste de canais</h2>
+            <p>Use depois de configurar SMTP e WhatsApp da empresa para validar o disparo antes de criar regras reais.</p>
+          </div>
+          <Bell size={18} />
+        </div>
+        <label>Mensagem de teste
+          <input
+            value={channelTestForm.message}
+            onChange={(event) => setChannelTestForm((current) => ({ ...current, message: event.target.value }))}
+          />
+        </label>
+        <div className="channel-test-grid">
+          <form className="channel-test-card" onSubmit={testWhatsAppChannel}>
+            <h3>WhatsApp da empresa</h3>
+            <label>Empresa
+              <select
+                value={channelTestForm.tenant_id}
+                onChange={(event) => setChannelTestForm((current) => ({ ...current, tenant_id: event.target.value }))}
+              >
+                <option value="">Selecione</option>
+                {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+              </select>
+            </label>
+            <label>Número
+              <input
+                value={channelTestForm.whatsapp}
+                onChange={(event) => setChannelTestForm((current) => ({ ...current, whatsapp: event.target.value }))}
+                placeholder="+5531999999999"
+              />
+            </label>
+            <button disabled={loading || !channelTestForm.tenant_id || !channelTestForm.whatsapp} type="submit">
+              <Bell size={16} /> Testar WhatsApp
+            </button>
+          </form>
+          <form className="channel-test-card" onSubmit={testEmailChannel}>
+            <h3>E-mail SMTP</h3>
+            <label>E-mail
+              <input
+                value={channelTestForm.email}
+                onChange={(event) => setChannelTestForm((current) => ({ ...current, email: event.target.value }))}
+                placeholder="operacao@impactocg.com"
+              />
+            </label>
+            <button disabled={loading || !channelTestForm.email} type="submit">
+              <Bell size={16} /> Testar e-mail
+            </button>
+          </form>
+        </div>
+      </section>
+
       <section className="panel">
         <div className="panel-title"><h2>Empresas cadastradas</h2></div>
         <div className="table">
@@ -1086,6 +1212,34 @@ function CompaniesView({ loading, setSignupForm, setWhatsAppTenantForm, signupCo
         </div>
       </section>
     </>
+  );
+}
+
+function HealthView({ sourceHealth }) {
+  return (
+    <section className="panel">
+      <div className="panel-title with-action">
+        <div>
+          <h2>Saude das fontes</h2>
+          <p>Mostra se cada fonte esta recebendo dados dentro da janela esperada.</p>
+        </div>
+        <Database size={18} />
+      </div>
+      <div className="table">
+        <div className="row health-head"><span>Fonte</span><span>Status</span><span>Ultima carga</span><span>Registros</span><span>Agent</span><span>Erro</span></div>
+        {sourceHealth.map((item) => (
+          <div className="row health-row" key={item.data_source_id}>
+            <span>{item.name}<small>{item.source_type}</small></span>
+            <span><StatusBadge status={item.status} /></span>
+            <span>{item.last_received_at ? new Date(item.last_received_at).toLocaleString("pt-BR") : "-"}</span>
+            <span>{item.last_record_count ?? "-"}</span>
+            <span>{item.agent_name || "-"}</span>
+            <span>{item.last_error || `Janela: ${item.stale_after_minutes} min`}</span>
+          </div>
+        ))}
+        {sourceHealth.length === 0 && <div className="empty">Nenhuma fonte para monitorar.</div>}
+      </div>
+    </section>
   );
 }
 
@@ -1323,7 +1477,7 @@ function AlertsView({ activeAlerts, activeSources, alertForm, alertSimulation, c
   );
 }
 
-function HistoryView({ acknowledgements, auditLogs, executions, occurrences, updateOccurrence }) {
+function HistoryView({ acknowledgements, auditLogs, deliveryLogs, executions, occurrences, updateOccurrence }) {
   return (
     <>
       <section className="panel">
@@ -1389,6 +1543,24 @@ function HistoryView({ acknowledgements, auditLogs, executions, occurrences, upd
             </div>
           ))}
           {acknowledgements.length === 0 && <div className="empty">Nenhuma leitura confirmada.</div>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title"><h2>Entregas por destinatario</h2></div>
+        <div className="table">
+          <div className="row delivery-head"><span>Alerta</span><span>Canal</span><span>Destinatario</span><span>Status</span><span>Data</span><span>Erro</span></div>
+          {deliveryLogs.map((log) => (
+            <div className="row delivery-row" key={log.id}>
+              <span>{log.alert_name || "-"}</span>
+              <span>{log.channel} {log.provider ? `(${log.provider})` : ""}</span>
+              <span>{log.recipient}</span>
+              <span><StatusBadge status={log.status} /></span>
+              <span>{new Date(log.sent_at).toLocaleString("pt-BR")}</span>
+              <span>{log.error_message || "-"}</span>
+            </div>
+          ))}
+          {deliveryLogs.length === 0 && <div className="empty">Nenhuma tentativa de entrega registrada.</div>}
         </div>
       </section>
 

@@ -149,6 +149,20 @@ class AlertAuditLogRead(ORMModel):
     alert_name: str | None = None
 
 
+class AlertDeliveryLogRead(ORMModel):
+    id: int
+    tenant_id: int
+    alert_id: int | None
+    occurrence_id: int | None
+    channel: str
+    recipient: str
+    status: str
+    provider: str | None
+    error_message: str | None
+    sent_at: datetime
+    alert_name: str | None = None
+
+
 class PublicAlertOccurrenceRead(BaseModel):
     alert_name: str
     source_name: str

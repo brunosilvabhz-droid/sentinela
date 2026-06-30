@@ -5,7 +5,7 @@ from app.api.deps import get_current_user, require_admin
 from app.db.session import get_db
 from datetime import datetime, timezone
 
-from app.models.alert import Alert, AlertAcknowledgement, AlertAuditLog, AlertExecution, AlertOccurrence
+from app.models.alert import Alert, AlertAcknowledgement, AlertAuditLog, AlertDeliveryLog, AlertExecution, AlertOccurrence
 from app.models.data_source import DataSource
 from app.models.user import User
 from app.schemas.alert import (
@@ -13,6 +13,7 @@ from app.schemas.alert import (
     AlertAcknowledgementRead,
     AlertAuditLogRead,
     AlertCreate,
+    AlertDeliveryLogRead,
     AlertExecutionRead,
     AlertExecutionWithAlertRead,
     AlertOccurrenceRead,
@@ -63,6 +64,24 @@ def list_all_alert_executions(
         }
         for execution, alert_name in rows
     ]
+
+
+@router.get("/delivery-logs", response_model=list[AlertDeliveryLogRead])
+def list_delivery_logs(
+    tenant_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    target_tenant_id = resolve_tenant_id(current_user, tenant_id)
+    rows = (
+        db.query(AlertDeliveryLog, Alert.name)
+        .outerjoin(Alert, Alert.id == AlertDeliveryLog.alert_id)
+        .filter(AlertDeliveryLog.tenant_id == target_tenant_id)
+        .order_by(AlertDeliveryLog.sent_at.desc())
+        .limit(200)
+        .all()
+    )
+    return [{**log.__dict__, "alert_name": alert_name} for log, alert_name in rows]
 
 
 @router.post("", response_model=AlertRead)

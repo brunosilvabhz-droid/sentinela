@@ -50,3 +50,15 @@ class DataSourceAttributeRead(BaseModel):
     name: str
     type: str | None = None
     sample_values: list[str | None] = []
+
+
+class DataSourceHealthRead(BaseModel):
+    data_source_id: int
+    name: str
+    source_type: str
+    status: str
+    last_received_at: datetime | None = None
+    last_record_count: int | None = None
+    last_error: str | None = None
+    agent_name: str | None = None
+    stale_after_minutes: int

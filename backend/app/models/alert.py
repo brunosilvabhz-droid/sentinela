@@ -108,3 +108,21 @@ class AlertAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     alert = relationship("Alert")
+
+
+class AlertDeliveryLog(Base):
+    __tablename__ = "alert_delivery_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True, nullable=False)
+    alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"), nullable=True)
+    occurrence_id: Mapped[int | None] = mapped_column(ForeignKey("alert_occurrences.id"), nullable=True)
+    channel: Mapped[str] = mapped_column(String(30), nullable=False)
+    recipient: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    alert = relationship("Alert")
+    occurrence = relationship("AlertOccurrence")

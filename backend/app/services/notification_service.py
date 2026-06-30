@@ -9,7 +9,7 @@ from twilio.rest import Client
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models.alert import Alert, AlertOccurrence
+from app.models.alert import Alert, AlertDeliveryLog, AlertOccurrence
 from app.models.app_setting import AppSetting
 from app.models.tenant import Tenant
 
@@ -20,12 +20,12 @@ def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence, 
     subject = f"[SENTINELA] Alerta disparado: {alert.name}"
     body = build_alert_message(alert, result, acknowledgement_url)
     if has_dynamic_recipients(alert):
-        send_dynamic_notifications(alert, result, subject, acknowledgement_url)
+        send_dynamic_notifications(alert, result, subject, acknowledgement_url, db, occurrence)
     else:
         if "email" in alert.channels:
-            send_email(alert.recipients, subject, body)
+            send_email(alert.recipients, subject, body, db=db, alert=alert, occurrence=occurrence)
         if "whatsapp" in alert.channels:
-            send_whatsapp(alert.recipients, body, alert.tenant)
+            send_whatsapp(alert.recipients, body, alert.tenant, db=db, alert=alert, occurrence=occurrence)
 
     copy_email = get_app_setting(db, "alert_copy_email")
     copy_whatsapp = get_app_setting(db, "alert_copy_whatsapp")
@@ -35,57 +35,98 @@ def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence, 
         send_whatsapp([copy_whatsapp], f"[COPIA OPERACIONAL]\n{body}")
 
 
-def send_email(recipients: list[str], subject: str, body: str) -> None:
+def send_email(
+    recipients: list[str],
+    subject: str,
+    body: str,
+    db: Session | None = None,
+    alert: Alert | None = None,
+    occurrence: AlertOccurrence | None = None,
+) -> None:
     settings = get_settings()
+    email_recipients = [recipient for recipient in recipients if "@" in recipient]
     if not settings.smtp_host:
+        for recipient in email_recipients:
+            log_delivery(db, alert, occurrence, "email", recipient, "skipped", "smtp", "SMTP nao configurado")
         return
-    message = EmailMessage()
-    message["From"] = settings.smtp_from_email
-    message["To"] = ", ".join([r for r in recipients if "@" in r])
-    message["Subject"] = subject
-    message.set_content(body)
-    if not message["To"]:
+    if not email_recipients:
         return
 
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
-        if settings.smtp_username:
-            smtp.starttls()
-            smtp.login(settings.smtp_username, settings.smtp_password)
-        smtp.send_message(message)
+    for recipient in email_recipients:
+        message = EmailMessage()
+        message["From"] = settings.smtp_from_email
+        message["To"] = recipient
+        message["Subject"] = subject
+        message.set_content(body)
+        try:
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+                if settings.smtp_username:
+                    smtp.starttls()
+                    smtp.login(settings.smtp_username, settings.smtp_password)
+                smtp.send_message(message)
+            log_delivery(db, alert, occurrence, "email", recipient, "sent", "smtp")
+        except Exception as exc:  # noqa: BLE001
+            log_delivery(db, alert, occurrence, "email", recipient, "error", "smtp", str(exc))
 
 
-def send_whatsapp(recipients: list[str], body: str, tenant: Tenant | None = None) -> None:
+def send_whatsapp(
+    recipients: list[str],
+    body: str,
+    tenant: Tenant | None = None,
+    db: Session | None = None,
+    alert: Alert | None = None,
+    occurrence: AlertOccurrence | None = None,
+) -> None:
     config = resolve_whatsapp_config(tenant)
     if not config.get("is_active", True):
+        for recipient in recipients:
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "skipped", config["provider"], "WhatsApp inativo")
         return
     if config["provider"].lower() == "twilio":
-        send_whatsapp_twilio(recipients, body)
+        send_whatsapp_twilio(recipients, body, db=db, alert=alert, occurrence=occurrence)
         return
-    send_whatsapp_meta(recipients, body, config)
+    send_whatsapp_meta(recipients, body, config, db=db, alert=alert, occurrence=occurrence)
 
 
 def has_dynamic_recipients(alert: Alert) -> bool:
     return bool(alert.dynamic_email_column or alert.dynamic_whatsapp_column)
 
 
-def send_dynamic_notifications(alert: Alert, result, subject: str, acknowledgement_url: str) -> None:
+def send_dynamic_notifications(
+    alert: Alert,
+    result,
+    subject: str,
+    acknowledgement_url: str,
+    db: Session,
+    occurrence: AlertOccurrence,
+) -> None:
     for record in result.matched_records or result.sample_records:
         body = build_alert_message_for_record(alert, result, acknowledgement_url, record)
         email = str(record.get(alert.dynamic_email_column or "", "") or "").strip()
         whatsapp = str(record.get(alert.dynamic_whatsapp_column or "", "") or "").strip()
         if "email" in alert.channels and email:
-            send_email([email], subject, body)
+            send_email([email], subject, body, db=db, alert=alert, occurrence=occurrence)
         if "whatsapp" in alert.channels and whatsapp:
-            send_whatsapp([whatsapp], body, alert.tenant)
+            send_whatsapp([whatsapp], body, alert.tenant, db=db, alert=alert, occurrence=occurrence)
 
 
-def send_whatsapp_meta(recipients: list[str], body: str, config: dict) -> None:
+def send_whatsapp_meta(
+    recipients: list[str],
+    body: str,
+    config: dict,
+    db: Session | None = None,
+    alert: Alert | None = None,
+    occurrence: AlertOccurrence | None = None,
+) -> None:
     if not config["token"] or not config["phone_number_id"]:
+        for recipient in recipients:
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "skipped", "meta", "Meta token ou phone_number_id nao configurado")
         return
 
     for recipient in recipients:
         phone_number = normalize_whatsapp_number(recipient)
         if not phone_number:
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "skipped", "meta", "Numero de WhatsApp invalido")
             continue
         payload = build_meta_whatsapp_payload(phone_number, body, config)
         request = Request(
@@ -100,14 +141,25 @@ def send_whatsapp_meta(recipients: list[str], body: str, config: dict) -> None:
         try:
             with urlopen(request, timeout=20) as response:
                 response.read()
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "sent", "meta")
         except HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Erro ao enviar WhatsApp pela Meta: {exc.code} {error_body}") from exc
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "error", "meta", f"{exc.code} {error_body}")
+        except Exception as exc:  # noqa: BLE001
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "error", "meta", str(exc))
 
 
-def send_whatsapp_twilio(recipients: list[str], body: str) -> None:
+def send_whatsapp_twilio(
+    recipients: list[str],
+    body: str,
+    db: Session | None = None,
+    alert: Alert | None = None,
+    occurrence: AlertOccurrence | None = None,
+) -> None:
     settings = get_settings()
     if not settings.twilio_account_sid or not settings.twilio_auth_token:
+        for recipient in recipients:
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "skipped", "twilio", "Twilio nao configurado")
         return
 
     client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
@@ -117,8 +169,40 @@ def send_whatsapp_twilio(recipients: list[str], body: str) -> None:
         elif recipient.startswith("+"):
             to = f"whatsapp:{recipient}"
         else:
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "skipped", "twilio", "Numero de WhatsApp invalido")
             continue
-        client.messages.create(from_=settings.twilio_whatsapp_from, to=to, body=body)
+        try:
+            client.messages.create(from_=settings.twilio_whatsapp_from, to=to, body=body)
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "sent", "twilio")
+        except Exception as exc:  # noqa: BLE001
+            log_delivery(db, alert, occurrence, "whatsapp", recipient, "error", "twilio", str(exc))
+
+
+def log_delivery(
+    db: Session | None,
+    alert: Alert | None,
+    occurrence: AlertOccurrence | None,
+    channel: str,
+    recipient: str,
+    status: str,
+    provider: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    if not db or not alert:
+        return
+    db.add(
+        AlertDeliveryLog(
+            tenant_id=alert.tenant_id,
+            alert_id=alert.id,
+            occurrence_id=occurrence.id if occurrence else None,
+            channel=channel,
+            recipient=recipient,
+            status=status,
+            provider=provider,
+            error_message=error_message,
+        )
+    )
+    db.flush()
 
 
 def build_meta_whatsapp_payload(phone_number: str, body: str, config: dict) -> dict:

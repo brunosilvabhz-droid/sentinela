@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
@@ -6,11 +7,18 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_admin, require_super_admin
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.collector import IngestedAttribute, IngestedRecord
+from app.models.collector import IngestedAttribute, IngestedRecord, IngestionBatch
 from app.models.data_source import DataSource
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.schemas.data_source import DataSourceAttributeRead, DataSourceCreate, DataSourcePreview, DataSourceRead, DataSourceUpdate
+from app.schemas.data_source import (
+    DataSourceAttributeRead,
+    DataSourceCreate,
+    DataSourceHealthRead,
+    DataSourcePreview,
+    DataSourceRead,
+    DataSourceUpdate,
+)
 from app.services.data_loader import load_data_source
 from app.services.tenant_limits import assert_can_create_data_source
 
@@ -28,6 +36,56 @@ def list_data_sources(
 ) -> list[DataSource]:
     target_tenant_id = resolve_tenant_id(current_user, tenant_id)
     return db.query(DataSource).filter(DataSource.tenant_id == target_tenant_id).all()
+
+
+@router.get("/health", response_model=list[DataSourceHealthRead])
+def list_data_source_health(
+    tenant_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> list[dict]:
+    target_tenant_id = resolve_tenant_id(current_user, tenant_id)
+    sources = db.query(DataSource).filter(DataSource.tenant_id == target_tenant_id).order_by(DataSource.name).all()
+    now = datetime.now(timezone.utc)
+    result = []
+    for source in sources:
+        stale_after_minutes = int((source.config or {}).get("stale_after_minutes") or 180)
+        latest_batch = (
+            db.query(IngestionBatch)
+            .filter(IngestionBatch.tenant_id == target_tenant_id, IngestionBatch.data_source_id == source.id)
+            .order_by(IngestionBatch.received_at.desc())
+            .first()
+        )
+        received_at = latest_batch.received_at if latest_batch else None
+        if received_at and received_at.tzinfo is None:
+            received_at = received_at.replace(tzinfo=timezone.utc)
+        status_value = "inactive" if not source.is_active else "configured"
+        if source.source_type == "managed":
+            if latest_batch is None:
+                status_value = "no_data"
+            elif latest_batch.status == "error":
+                status_value = "error"
+            elif received_at and received_at < now - timedelta(minutes=stale_after_minutes):
+                status_value = "stale"
+            else:
+                status_value = "healthy"
+        elif source.source_type in {"csv", "txt", "excel"}:
+            status_value = "healthy" if source.file_path else "no_file"
+
+        result.append(
+            {
+                "data_source_id": source.id,
+                "name": source.name,
+                "source_type": source.source_type,
+                "status": status_value,
+                "last_received_at": received_at,
+                "last_record_count": latest_batch.record_count if latest_batch else None,
+                "last_error": latest_batch.error_message if latest_batch else None,
+                "agent_name": latest_batch.agent.name if latest_batch and latest_batch.agent else None,
+                "stale_after_minutes": stale_after_minutes,
+            }
+        )
+    return result
 
 
 @router.get("/{data_source_id}/preview", response_model=DataSourcePreview)
