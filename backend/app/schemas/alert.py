@@ -22,6 +22,8 @@ class AlertCreate(BaseModel):
     template_type: str = "custom"
     message_template: str | None = None
     message_variables: dict[str, str] | None = None
+    dynamic_email_column: str | None = None
+    dynamic_whatsapp_column: str | None = None
     frequency: str = "*/15 * * * *"
     recipients: list[str]
     channels: list[str]
@@ -37,6 +39,8 @@ class AlertUpdate(BaseModel):
     template_type: str | None = None
     message_template: str | None = None
     message_variables: dict[str, str] | None = None
+    dynamic_email_column: str | None = None
+    dynamic_whatsapp_column: str | None = None
     frequency: str | None = None
     recipients: list[str] | None = None
     channels: list[str] | None = None
@@ -56,6 +60,8 @@ class AlertRead(ORMModel):
     template_type: str
     message_template: str | None
     message_variables: dict | None
+    dynamic_email_column: str | None
+    dynamic_whatsapp_column: str | None
     frequency: str
     recipients: list[str]
     channels: list[str]
@@ -95,7 +101,22 @@ class AlertOccurrenceRead(ORMModel):
     last_seen_at: datetime
     acknowledged_at: datetime | None
     resolved_at: datetime | None
+    assigned_to: str | None
+    resolution_note: str | None
     alert_name: str | None = None
+
+
+class AlertOccurrenceUpdate(BaseModel):
+    status: str | None = None
+    assigned_to: str | None = None
+    resolution_note: str | None = None
+
+
+class AlertSimulationRead(BaseModel):
+    matched_count: int
+    sample_records: list
+    sample_messages: list[str]
+    dynamic_recipients: list[dict[str, str]]
 
 
 class AlertAcknowledgementCreate(BaseModel):

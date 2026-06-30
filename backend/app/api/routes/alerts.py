@@ -16,11 +16,14 @@ from app.schemas.alert import (
     AlertExecutionRead,
     AlertExecutionWithAlertRead,
     AlertOccurrenceRead,
+    AlertOccurrenceUpdate,
+    AlertSimulationRead,
     AlertRead,
     AlertUpdate,
     PublicAlertOccurrenceRead,
 )
-from app.services.rule_engine import execute_alert
+from app.services.notification_service import preview_alert_messages
+from app.services.rule_engine import evaluate_alert, execute_alert
 from app.services.tenant_limits import assert_can_create_alert
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -96,6 +99,33 @@ def create_alert(
     db.commit()
     db.refresh(alert)
     return alert
+
+
+@router.post("/simulate", response_model=AlertSimulationRead)
+def simulate_alert(
+    payload: AlertCreate,
+    tenant_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    target_tenant_id = resolve_tenant_id(current_user, tenant_id)
+    data_source = (
+        db.query(DataSource)
+        .filter(DataSource.id == payload.data_source_id, DataSource.tenant_id == target_tenant_id)
+        .first()
+    )
+    if not data_source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fonte nao encontrada")
+    validate_alert_rules(payload.condition, payload.rules, payload.rule_logic)
+    alert = Alert(tenant_id=target_tenant_id, **payload.model_dump())
+    alert.data_source = data_source
+    result = evaluate_alert(alert, db)
+    return {
+        "matched_count": result.matched_count,
+        "sample_records": result.sample_records,
+        "sample_messages": preview_alert_messages(alert, result),
+        "dynamic_recipients": build_dynamic_recipient_preview(alert, result.sample_records),
+    }
 
 
 @router.delete("/{alert_id}", response_model=AlertRead)
@@ -195,6 +225,45 @@ def list_alert_occurrences(
         .all()
     )
     return [{**occurrence.__dict__, "alert_name": alert_name} for occurrence, alert_name in rows]
+
+
+@router.patch("/occurrences/{occurrence_id}", response_model=AlertOccurrenceRead)
+def update_alert_occurrence(
+    occurrence_id: int,
+    payload: AlertOccurrenceUpdate,
+    tenant_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    target_tenant_id = resolve_tenant_id(current_user, tenant_id)
+    occurrence = (
+        db.query(AlertOccurrence)
+        .filter(AlertOccurrence.id == occurrence_id, AlertOccurrence.tenant_id == target_tenant_id)
+        .first()
+    )
+    if not occurrence:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ocorrencia nao encontrada")
+    if payload.status:
+        if payload.status not in {"open", "in_progress", "acknowledged", "resolved", "ignored"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status de ocorrencia invalido")
+        occurrence.status = payload.status
+        if payload.status == "resolved":
+            occurrence.resolved_at = datetime.now(timezone.utc)
+        if payload.status == "acknowledged":
+            occurrence.acknowledged_at = datetime.now(timezone.utc)
+    if payload.assigned_to is not None:
+        occurrence.assigned_to = payload.assigned_to
+    if payload.resolution_note is not None:
+        occurrence.resolution_note = payload.resolution_note
+    add_alert_audit(db, occurrence.alert, current_user.id, "occurrence_updated", None, {
+        "occurrence_id": occurrence.id,
+        "status": occurrence.status,
+        "assigned_to": occurrence.assigned_to,
+        "resolution_note": occurrence.resolution_note,
+    })
+    db.commit()
+    db.refresh(occurrence)
+    return {**occurrence.__dict__, "alert_name": occurrence.alert.name}
 
 
 @router.get("/acknowledgements", response_model=list[AlertAcknowledgementRead])
@@ -300,6 +369,8 @@ def alert_snapshot(alert: Alert) -> dict:
         "template_type": alert.template_type,
         "message_template": alert.message_template,
         "message_variables": alert.message_variables,
+        "dynamic_email_column": alert.dynamic_email_column,
+        "dynamic_whatsapp_column": alert.dynamic_whatsapp_column,
         "frequency": alert.frequency,
         "recipients": alert.recipients,
         "channels": alert.channels,
@@ -336,7 +407,11 @@ def validate_alert_rules(condition: str, rules: list | None, rule_logic: str | N
         rule_condition = rule.condition if hasattr(rule, "condition") else rule.get("condition")
         rule_column = rule.column_name if hasattr(rule, "column_name") else rule.get("column_name")
         rule_value = rule.threshold_value if hasattr(rule, "threshold_value") else rule.get("threshold_value")
-        if not str(rule_column or "").strip() or rule_condition not in VALID_CONDITIONS or not str(rule_value or "").strip():
+        if (
+            not str(rule_column or "").strip()
+            or rule_condition not in VALID_CONDITIONS
+            or (rule_condition != "birthday_today" and not str(rule_value or "").strip())
+        ):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Regra composta invalida")
 
 
@@ -354,3 +429,15 @@ def validate_whatsapp_recipient_limit(channels: list[str], recipients: list[str]
 def is_whatsapp_recipient(recipient: str) -> bool:
     value = recipient.strip().lower()
     return bool(value) and "@" not in value and (value.startswith("+") or value.startswith("whatsapp:"))
+
+
+def build_dynamic_recipient_preview(alert: Alert, records: list[dict]) -> list[dict[str, str]]:
+    preview = []
+    for record in records[:5]:
+        preview.append(
+            {
+                "email": str(record.get(alert.dynamic_email_column or "", "") or ""),
+                "whatsapp": str(record.get(alert.dynamic_whatsapp_column or "", "") or ""),
+            }
+        )
+    return preview

@@ -361,7 +361,11 @@ label.inline input {
 }
 
 .occurrences-head,
-.occurrences-row,
+.occurrences-row {
+  align-items: start;
+  grid-template-columns: 1fr 1.1fr minmax(140px, 0.8fr) minmax(160px, 1fr) minmax(260px, 1.4fr);
+}
+
 .acknowledgements-head,
 .acknowledgements-row {
   grid-template-columns: 1.2fr 120px 120px 220px minmax(180px, 1fr);
@@ -417,6 +421,14 @@ label.inline input {
 .row-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.occurrences-row small {
+  color: #64748b;
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .icon-button {
@@ -771,6 +783,49 @@ th {
   grid-column: 1 / -1;
 }
 
+.dynamic-recipient-map {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 12px;
+}
+
+.dynamic-recipient-map strong,
+.dynamic-recipient-map small {
+  grid-column: 1 / -1;
+}
+
+.dynamic-recipient-map small {
+  color: #166534;
+}
+
+.simulation-panel {
+  border-color: #99f6e4;
+}
+
+.simulation-block {
+  background: #f8fafc;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.simulation-block pre {
+  background: #0f172a;
+  border-radius: 8px;
+  color: #e2e8f0;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
 .rule-builder-header,
 .rule-row {
   align-items: end;
@@ -822,6 +877,10 @@ th {
   }
 
   .variable-map {
+    grid-template-columns: 1fr;
+  }
+
+  .dynamic-recipient-map {
     grid-template-columns: 1fr;
   }
 

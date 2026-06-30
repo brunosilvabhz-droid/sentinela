@@ -19,6 +19,7 @@ class RuleResult:
     matched_count: int
     sample_records: list[dict]
     fingerprint: str
+    matched_records: list[dict] | None = None
 
 
 def evaluate_alert(alert: Alert, db: Session | None = None) -> RuleResult:
@@ -51,6 +52,7 @@ def evaluate_alert(alert: Alert, db: Session | None = None) -> RuleResult:
         matched_count=int(len(matches)),
         sample_records=matched_records[:10],
         fingerprint=_fingerprint_records(matched_records),
+        matched_records=matched_records[:1000],
     )
 
 

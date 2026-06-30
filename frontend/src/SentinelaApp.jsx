@@ -53,6 +53,8 @@ const emptyAlertForm = {
   template_type: "custom",
   message_template: "",
   message_variables: {},
+  dynamic_email_column: "",
+  dynamic_whatsapp_column: "",
   frequency: "15m",
   email_recipients: "financeiro@demo.com",
   whatsapp_recipients: "",
@@ -66,6 +68,8 @@ const alertPresets = {
     rules: [{ column_name: "", condition: ">", threshold_value: "" }],
     message_template: "",
     message_variables: {},
+    dynamic_email_column: "",
+    dynamic_whatsapp_column: "",
   },
   birthdays: {
     label: "Aniversariantes",
@@ -78,6 +82,8 @@ const alertPresets = {
       empresa: "empresa",
       data_nascimento: "data_nascimento",
     },
+    dynamic_email_column: "email",
+    dynamic_whatsapp_column: "whatsapp",
   },
   overdue: {
     label: "Titulo vencido",
@@ -91,6 +97,8 @@ const alertPresets = {
       dias_atraso: "dias_atraso",
       valor: "valor",
     },
+    dynamic_email_column: "email",
+    dynamic_whatsapp_column: "whatsapp",
   },
 };
 
@@ -133,6 +141,7 @@ export default function SentinelaApp() {
   const [selectedTenantId, setSelectedTenantId] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [alertSimulation, setAlertSimulation] = useState(null);
   const [sourceAttributes, setSourceAttributes] = useState([]);
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [sourceForm, setSourceForm] = useState(emptySourceForm);
@@ -427,6 +436,8 @@ export default function SentinelaApp() {
           template_type: alertForm.template_type,
           message_template: alertForm.message_template || null,
           message_variables: alertForm.message_variables,
+          dynamic_email_column: alertForm.dynamic_email_column || null,
+          dynamic_whatsapp_column: alertForm.dynamic_whatsapp_column || null,
           recipients: [...emailRecipients, ...whatsappRecipients],
         }),
       });
@@ -434,6 +445,54 @@ export default function SentinelaApp() {
       setMessage("Alerta criado.");
       await loadWorkspace();
       setActiveTab("alerts");
+    });
+  }
+
+  async function simulateAlert() {
+    await runAction(async () => {
+      const tenantQuery = isPlatformAdmin ? `?tenant_id=${selectedTenantId}` : "";
+      const rules = alertForm.rules
+        .map((rule) => ({
+          column_name: rule.column_name.trim(),
+          condition: rule.condition,
+          threshold_value: String(rule.threshold_value).trim(),
+        }))
+        .filter((rule) => rule.column_name && (rule.threshold_value || rule.condition === "birthday_today"));
+      if (!alertForm.data_source_id || rules.length === 0) {
+        throw new Error("Selecione uma fonte e informe ao menos uma condicao para simular.");
+      }
+      const primaryRule = rules[0];
+      const simulation = await api(`/alerts/simulate${tenantQuery}`, {
+        method: "POST",
+        body: JSON.stringify({
+          ...alertForm,
+          data_source_id: Number(alertForm.data_source_id),
+          column_name: primaryRule.column_name,
+          condition: primaryRule.condition,
+          threshold_value: primaryRule.threshold_value,
+          rule_logic: alertForm.rule_logic,
+          rules,
+          message_template: alertForm.message_template || null,
+          dynamic_email_column: alertForm.dynamic_email_column || null,
+          dynamic_whatsapp_column: alertForm.dynamic_whatsapp_column || null,
+          recipients: [...splitList(alertForm.email_recipients), ...splitList(alertForm.whatsapp_recipients)],
+        }),
+      });
+      setAlertSimulation(simulation);
+      setMessage(`Simulacao concluida: ${simulation.matched_count} registro(s) seriam encontrados.`);
+    });
+  }
+
+  async function updateOccurrence(occurrenceId, changes) {
+    await runAction(async () => {
+      const tenantQuery = isPlatformAdmin ? `?tenant_id=${selectedTenantId}` : "";
+      await api(`/alerts/occurrences/${occurrenceId}${tenantQuery}`, {
+        method: "PATCH",
+        body: JSON.stringify(changes),
+      });
+      setMessage("Ocorrencia atualizada.");
+      await loadWorkspace();
+      setActiveTab("history");
     });
   }
 
@@ -633,6 +692,7 @@ export default function SentinelaApp() {
             activeAlerts={activeAlerts}
             activeSources={activeSources}
             alertForm={alertForm}
+            alertSimulation={alertSimulation}
             createAlert={createAlert}
             deactivateAlert={deactivateAlert}
             loading={loading}
@@ -640,6 +700,7 @@ export default function SentinelaApp() {
             runAlert={runAlert}
             setAlertForm={setAlertForm}
             showPreview={showPreview}
+            simulateAlert={simulateAlert}
             sourceAttributes={sourceAttributes}
           />
         )}
@@ -659,6 +720,7 @@ export default function SentinelaApp() {
             auditLogs={auditLogs}
             executions={executions}
             occurrences={occurrences}
+            updateOccurrence={updateOccurrence}
           />
         )}
         {token && (isPlatformAdmin || canManageTenant) && activeTab === "users" && (
@@ -955,7 +1017,7 @@ function SettingsView({ appSettings, loading, saveAppSettings, setAppSettings })
   );
 }
 
-function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deactivateAlert, loading, preview, runAlert, setAlertForm, showPreview, sourceAttributes }) {
+function AlertsView({ activeAlerts, activeSources, alertForm, alertSimulation, createAlert, deactivateAlert, loading, preview, runAlert, setAlertForm, showPreview, simulateAlert, sourceAttributes }) {
   const previewColumns = sourceAttributes.length > 0 ? sourceAttributes.map((attribute) => attribute.name) : (preview?.columns || []);
   const templateVariables = extractTemplateVariables(alertForm.message_template);
 
@@ -1067,6 +1129,26 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
                 ))}
               </div>
             )}
+            <div className="dynamic-recipient-map">
+              <strong>Destinatario dinamico por linha</strong>
+              <label>Coluna de e-mail
+                <input
+                  list="columns"
+                  value={alertForm.dynamic_email_column || ""}
+                  onChange={(event) => setAlertForm((current) => ({ ...current, dynamic_email_column: event.target.value }))}
+                  placeholder="email"
+                />
+              </label>
+              <label>Coluna de WhatsApp
+                <input
+                  list="columns"
+                  value={alertForm.dynamic_whatsapp_column || ""}
+                  onChange={(event) => setAlertForm((current) => ({ ...current, dynamic_whatsapp_column: event.target.value }))}
+                  placeholder="whatsapp"
+                />
+              </label>
+              <small>Quando preenchido, cada registro encontrado recebe sua propria mensagem pelo contato da linha.</small>
+            </div>
           </div>
           <label>Frequencia<input value={alertForm.frequency} onChange={(event) => setAlertForm((current) => ({ ...current, frequency: event.target.value }))} placeholder="15m ou */15 * * * *" /></label>
           <label>E-mails do cliente<input value={alertForm.email_recipients} onChange={(event) => setAlertForm((current) => ({ ...current, email_recipients: event.target.value }))} placeholder="financeiro@empresa.com, gestor@empresa.com" /></label>
@@ -1085,8 +1167,34 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
           >
             <Plus size={16} /> Criar alerta
           </button>
+          <button className="secondary" disabled={loading} type="button" onClick={simulateAlert}>
+            <Eye size={16} /> Simular
+          </button>
         </form>
       </section>
+
+      {alertSimulation && (
+        <section className="panel simulation-panel">
+          <div className="panel-title"><h2>Resultado da simulacao</h2></div>
+          <p><strong>{alertSimulation.matched_count}</strong> registro(s) encontrados com a regra atual.</p>
+          {alertSimulation.dynamic_recipients?.length > 0 && (
+            <div className="simulation-block">
+              <strong>Destinatarios detectados</strong>
+              {alertSimulation.dynamic_recipients.map((recipient, index) => (
+                <span key={index}>Email: {recipient.email || "-"} | WhatsApp: {recipient.whatsapp || "-"}</span>
+              ))}
+            </div>
+          )}
+          {alertSimulation.sample_messages?.length > 0 && (
+            <div className="simulation-block">
+              <strong>Mensagem de exemplo</strong>
+              {alertSimulation.sample_messages.map((sample, index) => (
+                <pre key={index}>{sample}</pre>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="panel">
         <div className="panel-title"><h2>Alertas ativos</h2></div>
@@ -1110,7 +1218,7 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
   );
 }
 
-function HistoryView({ acknowledgements, auditLogs, executions, occurrences }) {
+function HistoryView({ acknowledgements, auditLogs, executions, occurrences, updateOccurrence }) {
   return (
     <>
       <section className="panel">
@@ -1133,14 +1241,29 @@ function HistoryView({ acknowledgements, auditLogs, executions, occurrences }) {
       <section className="panel">
         <div className="panel-title"><h2>Ocorrencias de alertas</h2></div>
         <div className="table">
-          <div className="row occurrences-head"><span>Alerta</span><span>Status</span><span>Registros</span><span>Visto em</span><span>Confirmado</span></div>
+          <div className="row occurrences-head"><span>Alerta</span><span>Status</span><span>Responsavel</span><span>Nota</span><span>Acoes</span></div>
           {occurrences.map((occurrence) => (
             <div className="row occurrences-row" key={occurrence.id}>
               <span>{occurrence.alert_name}</span>
-              <span><StatusBadge status={occurrence.status} /></span>
-              <span>{occurrence.matched_count}</span>
-              <span>{new Date(occurrence.last_seen_at).toLocaleString("pt-BR")}</span>
-              <span>{occurrence.acknowledged_at ? new Date(occurrence.acknowledged_at).toLocaleString("pt-BR") : "-"}</span>
+              <span>
+                <StatusBadge status={occurrence.status} />
+                <small>{occurrence.matched_count} registro(s), visto em {new Date(occurrence.last_seen_at).toLocaleString("pt-BR")}</small>
+              </span>
+              <input
+                defaultValue={occurrence.assigned_to || ""}
+                onBlur={(event) => updateOccurrence(occurrence.id, { assigned_to: event.target.value })}
+                placeholder="Responsavel"
+              />
+              <input
+                defaultValue={occurrence.resolution_note || ""}
+                onBlur={(event) => updateOccurrence(occurrence.id, { resolution_note: event.target.value })}
+                placeholder="Comentario"
+              />
+              <div className="row-actions">
+                <button className="secondary" onClick={() => updateOccurrence(occurrence.id, { status: "in_progress" })}>Em analise</button>
+                <button onClick={() => updateOccurrence(occurrence.id, { status: "resolved" })}>Resolver</button>
+                <button className="secondary" onClick={() => updateOccurrence(occurrence.id, { status: "ignored" })}>Ignorar</button>
+              </div>
             </div>
           ))}
           {occurrences.length === 0 && <div className="empty">Nenhuma ocorrencia registrada.</div>}
@@ -1409,6 +1532,8 @@ function applyAlertPreset(templateType, setAlertForm) {
     rules: preset.rules.map((rule) => ({ ...rule })),
     message_template: preset.message_template,
     message_variables: { ...preset.message_variables },
+    dynamic_email_column: preset.dynamic_email_column || current.dynamic_email_column,
+    dynamic_whatsapp_column: preset.dynamic_whatsapp_column || current.dynamic_whatsapp_column,
     channels: templateType === "birthdays" ? ["whatsapp"] : current.channels,
   }));
 }

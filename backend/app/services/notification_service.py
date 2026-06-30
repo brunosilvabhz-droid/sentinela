@@ -18,10 +18,13 @@ def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence, 
     acknowledgement_url = f"{settings.frontend_public_url.rstrip('/')}/ack/{occurrence.ack_token}"
     subject = f"[SENTINELA] Alerta disparado: {alert.name}"
     body = build_alert_message(alert, result, acknowledgement_url)
-    if "email" in alert.channels:
-        send_email(alert.recipients, subject, body)
-    if "whatsapp" in alert.channels:
-        send_whatsapp(alert.recipients, body)
+    if has_dynamic_recipients(alert):
+        send_dynamic_notifications(alert, result, subject, acknowledgement_url)
+    else:
+        if "email" in alert.channels:
+            send_email(alert.recipients, subject, body)
+        if "whatsapp" in alert.channels:
+            send_whatsapp(alert.recipients, body)
 
     copy_email = get_app_setting(db, "alert_copy_email")
     copy_whatsapp = get_app_setting(db, "alert_copy_whatsapp")
@@ -56,6 +59,21 @@ def send_whatsapp(recipients: list[str], body: str) -> None:
         send_whatsapp_twilio(recipients, body)
         return
     send_whatsapp_meta(recipients, body)
+
+
+def has_dynamic_recipients(alert: Alert) -> bool:
+    return bool(alert.dynamic_email_column or alert.dynamic_whatsapp_column)
+
+
+def send_dynamic_notifications(alert: Alert, result, subject: str, acknowledgement_url: str) -> None:
+    for record in result.matched_records or result.sample_records:
+        body = build_alert_message_for_record(alert, result, acknowledgement_url, record)
+        email = str(record.get(alert.dynamic_email_column or "", "") or "").strip()
+        whatsapp = str(record.get(alert.dynamic_whatsapp_column or "", "") or "").strip()
+        if "email" in alert.channels and email:
+            send_email([email], subject, body)
+        if "whatsapp" in alert.channels and whatsapp:
+            send_whatsapp([whatsapp], body)
 
 
 def send_whatsapp_meta(recipients: list[str], body: str) -> None:
@@ -144,11 +162,20 @@ def get_app_setting(db: Session, key: str) -> str:
 
 
 def build_alert_message(alert: Alert, result, acknowledgement_url: str) -> str:
+    return build_alert_message_for_record(
+        alert,
+        result,
+        acknowledgement_url,
+        result.sample_records[0] if result.sample_records else {},
+    )
+
+
+def build_alert_message_for_record(alert: Alert, result, acknowledgement_url: str, record: dict) -> str:
     if alert.message_template:
         rendered = render_message_template(
             alert.message_template,
             alert.message_variables or {},
-            result.sample_records[0] if result.sample_records else {},
+            record,
         )
         return (
             f"{rendered}\n\n"
@@ -164,6 +191,13 @@ def build_alert_message(alert: Alert, result, acknowledgement_url: str) -> str:
         f"Confirmar leitura: {acknowledgement_url}\n"
         f"Amostra: {result.sample_records[:3]}"
     )
+
+
+def preview_alert_messages(alert: Alert, result, acknowledgement_url: str = "https://app.impactocg.com/ack/exemplo") -> list[str]:
+    return [
+        build_alert_message_for_record(alert, result, acknowledgement_url, record)
+        for record in (result.sample_records or [])[:3]
+    ]
 
 
 def render_message_template(template: str, variables: dict[str, str], record: dict) -> str:
