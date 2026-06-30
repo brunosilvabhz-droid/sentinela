@@ -64,6 +64,8 @@ def signup_company(
         plan=payload.plan,
         max_sources=payload.max_sources,
         max_alerts=payload.max_alerts,
+        max_upload_mb=payload.max_upload_mb,
+        data_retention_days=payload.data_retention_days,
     )
     db.add(tenant)
     db.flush()

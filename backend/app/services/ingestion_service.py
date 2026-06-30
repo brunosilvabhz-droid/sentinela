@@ -1,11 +1,18 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.collector import CollectorAgent, IngestedAttribute, IngestedRecord, IngestionBatch
 from app.models.data_source import DataSource
 from app.schemas.ingestion import IngestionBatchCreate
 
 
 def ingest_batch(db: Session, agent: CollectorAgent, payload: IngestionBatchCreate) -> IngestionBatch:
+    max_records = get_settings().max_ingestion_batch_records
+    if len(payload.records) > max_records:
+        raise ValueError(f"Lote excede o limite de {max_records} registros")
+
     data_source = (
         db.query(DataSource)
         .filter(
@@ -55,6 +62,7 @@ def ingest_batch(db: Session, agent: CollectorAgent, payload: IngestionBatchCrea
             existing_record.payload = record.payload
             existing_record.batch_id = batch.id
             existing_record.collected_at = record.collected_at
+            existing_record.ingested_at = datetime.now(timezone.utc)
             db.flush()
             _replace_record_attributes(db, existing_record, record.payload)
         else:

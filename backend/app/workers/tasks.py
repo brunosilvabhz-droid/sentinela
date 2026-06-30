@@ -4,6 +4,7 @@ from croniter import croniter
 
 from app.db.session import SessionLocal
 from app.models.alert import Alert
+from app.services.data_retention import purge_expired_ingestion_data
 from app.services.rule_engine import execute_alert
 from app.workers.celery_app import celery_app
 
@@ -33,6 +34,15 @@ def dispatch_due_alerts() -> int:
                 run_alert.delay(alert.id)
                 dispatched += 1
         return dispatched
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.tasks.purge_ingestion_data")
+def purge_ingestion_data() -> dict[str, int]:
+    db = SessionLocal()
+    try:
+        return purge_expired_ingestion_data(db)
     finally:
         db.close()
 

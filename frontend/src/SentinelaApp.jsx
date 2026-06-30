@@ -116,6 +116,8 @@ const emptySignupForm = {
   plan: "free",
   max_sources: 3,
   max_alerts: 5,
+  max_upload_mb: 10,
+  data_retention_days: 90,
   admin_name: "",
   admin_email: "",
   admin_password: "",
@@ -952,12 +954,14 @@ function CompaniesView({ loading, setSignupForm, signupCompany, signupForm, tena
           </label>
           <label>Limite de fontes<input type="number" min="1" value={signupForm.max_sources} onChange={(event) => setSignupForm((current) => ({ ...current, max_sources: Number(event.target.value) }))} /></label>
           <label>Limite de alertas<input type="number" min="1" value={signupForm.max_alerts} onChange={(event) => setSignupForm((current) => ({ ...current, max_alerts: Number(event.target.value) }))} /></label>
+          <label>Upload maximo (MB)<input type="number" min="1" value={signupForm.max_upload_mb} onChange={(event) => setSignupForm((current) => ({ ...current, max_upload_mb: Number(event.target.value) }))} /></label>
+          <label>Retencao de dados (dias)<input type="number" min="1" value={signupForm.data_retention_days} onChange={(event) => setSignupForm((current) => ({ ...current, data_retention_days: Number(event.target.value) }))} /></label>
           <label>Nome do admin<input value={signupForm.admin_name} onChange={(event) => setSignupForm((current) => ({ ...current, admin_name: event.target.value }))} /></label>
           <label>Email do admin<input value={signupForm.admin_email} onChange={(event) => setSignupForm((current) => ({ ...current, admin_email: event.target.value }))} /></label>
           <label>Senha do admin<input type="password" value={signupForm.admin_password} onChange={(event) => setSignupForm((current) => ({ ...current, admin_password: event.target.value }))} /></label>
           <button
             type="submit"
-            disabled={loading || !signupForm.company_name || !signupForm.admin_name || !signupForm.admin_email || signupForm.admin_password.length < 8 || signupForm.max_sources < 1 || signupForm.max_alerts < 1}
+            disabled={loading || !signupForm.company_name || !signupForm.admin_name || !signupForm.admin_email || signupForm.admin_password.length < 8 || signupForm.max_sources < 1 || signupForm.max_alerts < 1 || signupForm.max_upload_mb < 1 || signupForm.data_retention_days < 1}
           >
             <Plus size={16} /> Criar empresa e admin
           </button>
@@ -967,13 +971,14 @@ function CompaniesView({ loading, setSignupForm, signupCompany, signupForm, tena
       <section className="panel">
         <div className="panel-title"><h2>Empresas cadastradas</h2></div>
         <div className="table">
-          <div className="row companies-head"><span>Empresa</span><span>Plano</span><span>Fontes</span><span>Alertas</span><span>Status</span></div>
+          <div className="row companies-head"><span>Empresa</span><span>Plano</span><span>Fontes</span><span>Alertas</span><span>Dados</span><span>Status</span></div>
           {tenants.map((tenant) => (
             <div className="row companies-row" key={tenant.id}>
               <span>{tenant.name}</span>
               <span>{tenant.plan || "starter"}</span>
               <span>{tenant.max_sources}</span>
               <span>{tenant.max_alerts}</span>
+              <span>{tenant.max_upload_mb || 10} MB / {tenant.data_retention_days || 90} dias</span>
               <span>{tenant.is_active ? "ativa" : "inativa"}</span>
             </div>
           ))}

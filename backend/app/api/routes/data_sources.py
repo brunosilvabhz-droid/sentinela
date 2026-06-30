@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin, require_super_admin
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.collector import IngestedAttribute, IngestedRecord
 from app.models.data_source import DataSource
@@ -16,6 +17,7 @@ from app.services.tenant_limits import assert_can_create_data_source
 router = APIRouter(prefix="/data-sources", tags=["data_sources"])
 UPLOAD_DIR = Path("storage/uploads")
 DATABASE_SOURCE_TYPES = {"postgresql", "oracle", "sqlserver"}
+UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 @router.get("", response_model=list[DataSourceRead])
@@ -143,11 +145,27 @@ def upload_data_source(
     assert_can_create_data_source(db, tenant)
     if source_type not in {"csv", "txt", "excel"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de arquivo invalido")
+    max_upload_mb = tenant.max_upload_mb or get_settings().default_max_upload_mb
+    max_upload_bytes = max_upload_mb * 1024 * 1024
     tenant_dir = UPLOAD_DIR / str(tenant.id)
     tenant_dir.mkdir(parents=True, exist_ok=True)
     safe_filename = Path(file.filename).name
     file_path = tenant_dir / safe_filename
-    file_path.write_bytes(file.file.read())
+    total_bytes = 0
+    try:
+        with file_path.open("wb") as output:
+            while chunk := file.file.read(UPLOAD_CHUNK_SIZE):
+                total_bytes += len(chunk)
+                if total_bytes > max_upload_bytes:
+                    output.close()
+                    file_path.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"Arquivo excede o limite de {max_upload_mb} MB para esta empresa",
+                    )
+                output.write(chunk)
+    finally:
+        file.file.close()
 
     data_source = DataSource(
         tenant_id=tenant.id,

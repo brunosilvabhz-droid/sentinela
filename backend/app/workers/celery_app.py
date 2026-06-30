@@ -15,7 +15,11 @@ celery_app.conf.beat_schedule = {
     "dispatch-due-alerts-every-minute": {
         "task": "app.workers.tasks.dispatch_due_alerts",
         "schedule": 60.0,
-    }
+    },
+    "purge-ingestion-data-daily": {
+        "task": "app.workers.tasks.purge_ingestion_data",
+        "schedule": 86400.0,
+    },
 }
 celery_app.conf.timezone = "UTC"
 celery_app.conf.worker_prefetch_multiplier = 1

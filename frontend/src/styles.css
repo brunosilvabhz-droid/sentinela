@@ -383,7 +383,7 @@ label.inline input {
 
 .companies-head,
 .companies-row {
-  grid-template-columns: 1.4fr 120px 100px 100px 120px;
+  grid-template-columns: 1.3fr 110px 90px 90px 160px 100px;
 }
 
 .agents-head,

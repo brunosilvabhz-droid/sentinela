@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_whatsapp_from: str = "whatsapp:+14155238886"
     max_alerts_free_plan: int = 5
+    default_max_upload_mb: int = 10
+    default_data_retention_days: int = 90
+    max_ingestion_batch_records: int = 5000
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
