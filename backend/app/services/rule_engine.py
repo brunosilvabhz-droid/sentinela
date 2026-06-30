@@ -35,7 +35,7 @@ def evaluate_alert(alert: Alert, db: Session | None = None) -> RuleResult:
         if column_name not in dataframe.columns:
             raise ValueError(f"Coluna '{column_name}' nao existe na fonte")
         series = dataframe[column_name]
-        threshold = _coerce_threshold(series, rule["threshold_value"])
+        threshold = None if rule["condition"] == "birthday_today" else _coerce_threshold(series, rule["threshold_value"])
         rule_mask = _build_mask(series, rule["condition"], threshold)
         if mask is None:
             mask = rule_mask
@@ -157,6 +157,10 @@ def _coerce_threshold(series: pd.Series, value: str):
 
 
 def _build_mask(series: pd.Series, condition: str, threshold):
+    if condition == "birthday_today":
+        dates = pd.to_datetime(series, errors="coerce", dayfirst=True)
+        today = datetime.now().date()
+        return (dates.dt.day == today.day) & (dates.dt.month == today.month)
     comparable = pd.to_numeric(series, errors="coerce") if isinstance(threshold, float) else series.astype(str)
     if condition == ">":
         return comparable > threshold

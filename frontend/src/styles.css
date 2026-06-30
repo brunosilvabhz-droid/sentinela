@@ -16,7 +16,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -202,12 +203,24 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1px solid #cfd8e3;
   border-radius: 6px;
-  min-height: 40px;
   padding: 0 10px;
   width: 100%;
+}
+
+input,
+select {
+  min-height: 40px;
+}
+
+textarea {
+  line-height: 1.5;
+  min-height: 120px;
+  padding: 10px;
+  resize: vertical;
 }
 
 .notice {
@@ -729,6 +742,35 @@ th {
   padding: 14px;
 }
 
+.message-builder {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+  padding: 14px;
+}
+
+.message-builder .rule-builder-header {
+  grid-template-columns: 1fr;
+}
+
+.variable-map {
+  background: #f8fafc;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 12px;
+}
+
+.variable-map strong {
+  color: #0f172a;
+  grid-column: 1 / -1;
+}
+
 .rule-builder-header,
 .rule-row {
   align-items: end;
@@ -776,6 +818,10 @@ th {
 @media (max-width: 900px) {
   .rule-builder-header,
   .rule-row {
+    grid-template-columns: 1fr;
+  }
+
+  .variable-map {
     grid-template-columns: 1fr;
   }
 

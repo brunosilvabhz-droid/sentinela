@@ -1,6 +1,7 @@
 import smtplib
 from email.message import EmailMessage
 import json
+import re
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -16,13 +17,7 @@ def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence, 
     settings = get_settings()
     acknowledgement_url = f"{settings.frontend_public_url.rstrip('/')}/ack/{occurrence.ack_token}"
     subject = f"[SENTINELA] Alerta disparado: {alert.name}"
-    body = (
-        f"O alerta '{alert.name}' encontrou {result.matched_count} registro(s).\n"
-        f"Fonte: {alert.data_source.name}\n"
-        f"Regra: {_format_alert_rules(alert)}\n"
-        f"Confirmar leitura: {acknowledgement_url}\n"
-        f"Amostra: {result.sample_records[:3]}"
-    )
+    body = build_alert_message(alert, result, acknowledgement_url)
     if "email" in alert.channels:
         send_email(alert.recipients, subject, body)
     if "whatsapp" in alert.channels:
@@ -146,6 +141,39 @@ def normalize_whatsapp_number(recipient: str) -> str:
 def get_app_setting(db: Session, key: str) -> str:
     setting = db.query(AppSetting).filter(AppSetting.key == key).first()
     return setting.value.strip() if setting and setting.value else ""
+
+
+def build_alert_message(alert: Alert, result, acknowledgement_url: str) -> str:
+    if alert.message_template:
+        rendered = render_message_template(
+            alert.message_template,
+            alert.message_variables or {},
+            result.sample_records[0] if result.sample_records else {},
+        )
+        return (
+            f"{rendered}\n\n"
+            f"Alerta: {alert.name}\n"
+            f"Fonte: {alert.data_source.name}\n"
+            f"Registros encontrados: {result.matched_count}\n"
+            f"Confirmar leitura: {acknowledgement_url}"
+        )
+    return (
+        f"O alerta '{alert.name}' encontrou {result.matched_count} registro(s).\n"
+        f"Fonte: {alert.data_source.name}\n"
+        f"Regra: {_format_alert_rules(alert)}\n"
+        f"Confirmar leitura: {acknowledgement_url}\n"
+        f"Amostra: {result.sample_records[:3]}"
+    )
+
+
+def render_message_template(template: str, variables: dict[str, str], record: dict) -> str:
+    def replace(match: re.Match) -> str:
+        variable_name = match.group(1).strip()
+        column_name = variables.get(variable_name, variable_name)
+        value = record.get(column_name, "")
+        return "" if value is None else str(value)
+
+    return re.sub(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", replace, template)
 
 
 def _format_alert_rules(alert: Alert) -> str:

@@ -24,7 +24,7 @@ from app.services.rule_engine import execute_alert
 from app.services.tenant_limits import assert_can_create_alert
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
-VALID_CONDITIONS = {">", "<", "=", "==", ">=", "<=", "!="}
+VALID_CONDITIONS = {">", "<", "=", "==", ">=", "<=", "!=", "birthday_today"}
 VALID_RULE_LOGIC = {"AND", "OR"}
 
 
@@ -297,6 +297,9 @@ def alert_snapshot(alert: Alert) -> dict:
         "threshold_value": alert.threshold_value,
         "rules": alert.rules,
         "rule_logic": alert.rule_logic,
+        "template_type": alert.template_type,
+        "message_template": alert.message_template,
+        "message_variables": alert.message_variables,
         "frequency": alert.frequency,
         "recipients": alert.recipients,
         "channels": alert.channels,

@@ -50,10 +50,48 @@ const emptyAlertForm = {
   data_source_id: "",
   rule_logic: "AND",
   rules: [{ column_name: "", condition: ">", threshold_value: "" }],
+  template_type: "custom",
+  message_template: "",
+  message_variables: {},
   frequency: "15m",
   email_recipients: "financeiro@demo.com",
   whatsapp_recipients: "",
   channels: ["email"],
+};
+
+const alertPresets = {
+  custom: {
+    label: "Personalizado",
+    name: "",
+    rules: [{ column_name: "", condition: ">", threshold_value: "" }],
+    message_template: "",
+    message_variables: {},
+  },
+  birthdays: {
+    label: "Aniversariantes",
+    name: "Aniversariantes do dia",
+    rules: [{ column_name: "data_nascimento", condition: "birthday_today", threshold_value: "hoje" }],
+    message_template:
+      "Ola {{nome}}, feliz aniversario! A equipe da {{empresa}} deseja um dia especial para voce.",
+    message_variables: {
+      nome: "nome",
+      empresa: "empresa",
+      data_nascimento: "data_nascimento",
+    },
+  },
+  overdue: {
+    label: "Titulo vencido",
+    name: "Titulos vencidos",
+    rules: [{ column_name: "dias_atraso", condition: ">", threshold_value: "0" }],
+    message_template:
+      "Cliente {{cliente}} possui titulo {{documento}} vencido ha {{dias_atraso}} dia(s). Valor: {{valor}}.",
+    message_variables: {
+      cliente: "cliente",
+      documento: "documento",
+      dias_atraso: "dias_atraso",
+      valor: "valor",
+    },
+  },
 };
 
 const emptyUserForm = {
@@ -366,7 +404,7 @@ export default function SentinelaApp() {
           condition: rule.condition,
           threshold_value: String(rule.threshold_value).trim(),
         }))
-        .filter((rule) => rule.column_name && rule.threshold_value);
+        .filter((rule) => rule.column_name && (rule.threshold_value || rule.condition === "birthday_today"));
       if (rules.length === 0) {
         throw new Error("Informe ao menos uma condicao para o alerta.");
       }
@@ -386,6 +424,9 @@ export default function SentinelaApp() {
           threshold_value: primaryRule.threshold_value,
           rule_logic: alertForm.rule_logic,
           rules,
+          template_type: alertForm.template_type,
+          message_template: alertForm.message_template || null,
+          message_variables: alertForm.message_variables,
           recipients: [...emailRecipients, ...whatsappRecipients],
         }),
       });
@@ -916,6 +957,7 @@ function SettingsView({ appSettings, loading, saveAppSettings, setAppSettings })
 
 function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deactivateAlert, loading, preview, runAlert, setAlertForm, showPreview, sourceAttributes }) {
   const previewColumns = sourceAttributes.length > 0 ? sourceAttributes.map((attribute) => attribute.name) : (preview?.columns || []);
+  const templateVariables = extractTemplateVariables(alertForm.message_template);
 
   return (
     <>
@@ -926,6 +968,11 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
         </div>
         <form className="alert-form" onSubmit={createAlert}>
           <label>Nome<input value={alertForm.name} onChange={(event) => setAlertForm((current) => ({ ...current, name: event.target.value }))} placeholder="Pedidos acima de 1000" /></label>
+          <label>Modelo
+            <select value={alertForm.template_type} onChange={(event) => applyAlertPreset(event.target.value, setAlertForm)}>
+              {Object.entries(alertPresets).map(([value, preset]) => <option key={value} value={value}>{preset.label}</option>)}
+            </select>
+          </label>
           <label>Fonte
             <select
               value={alertForm.data_source_id}
@@ -970,10 +1017,16 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
                     <option value=">=">&gt;=</option>
                     <option value="<=">&lt;=</option>
                     <option value="!=">!=</option>
+                    <option value="birthday_today">aniversario hoje</option>
                   </select>
                 </label>
                 <label>Valor
-                  <input value={rule.threshold_value} onChange={(event) => updateAlertRule(setAlertForm, index, "threshold_value", event.target.value)} placeholder={index === 0 ? "1000" : "3"} />
+                  <input
+                    disabled={rule.condition === "birthday_today"}
+                    value={rule.threshold_value}
+                    onChange={(event) => updateAlertRule(setAlertForm, index, "threshold_value", event.target.value)}
+                    placeholder={rule.condition === "birthday_today" ? "hoje" : index === 0 ? "1000" : "3"}
+                  />
                 </label>
                 <button className="icon-button secondary" type="button" onClick={() => removeAlertRule(setAlertForm, index)} disabled={alertForm.rules.length === 1} title="Remover condicao">
                   <Trash2 size={16} />
@@ -981,8 +1034,39 @@ function AlertsView({ activeAlerts, activeSources, alertForm, createAlert, deact
               </div>
             ))}
             <button className="secondary add-rule-button" type="button" onClick={() => addAlertRule(setAlertForm)}>
-              <Plus size={16} /> Adicionar condicao
+            <Plus size={16} /> Adicionar condicao
             </button>
+          </div>
+          <div className="message-builder">
+            <div className="rule-builder-header">
+              <div>
+                <strong>Mensagem enviada ao cliente</strong>
+                <span>Use variaveis entre chaves, por exemplo: {"{{nome}}"} e {"{{valor}}"}.</span>
+              </div>
+            </div>
+            <label>Texto da mensagem
+              <textarea
+                rows={5}
+                value={alertForm.message_template}
+                onChange={(event) => setAlertForm((current) => ({ ...current, message_template: event.target.value }))}
+                placeholder="Ex.: Ola {{nome}}, identificamos o valor {{valor}} no pedido {{pedido}}."
+              />
+            </label>
+            {templateVariables.length > 0 && (
+              <div className="variable-map">
+                <strong>Preenchimento das variaveis</strong>
+                {templateVariables.map((variable) => (
+                  <label key={variable}>{`{{${variable}}}`}
+                    <input
+                      list="columns"
+                      value={alertForm.message_variables?.[variable] || ""}
+                      onChange={(event) => updateMessageVariable(setAlertForm, variable, event.target.value)}
+                      placeholder={`Coluna para ${variable}`}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
           <label>Frequencia<input value={alertForm.frequency} onChange={(event) => setAlertForm((current) => ({ ...current, frequency: event.target.value }))} placeholder="15m ou */15 * * * *" /></label>
           <label>E-mails do cliente<input value={alertForm.email_recipients} onChange={(event) => setAlertForm((current) => ({ ...current, email_recipients: event.target.value }))} placeholder="financeiro@empresa.com, gestor@empresa.com" /></label>
@@ -1303,8 +1387,44 @@ function updateAlertRule(setAlertForm, index, field, value) {
   setAlertForm((current) => ({
     ...current,
     rules: current.rules.map((rule, ruleIndex) => (
-      ruleIndex === index ? { ...rule, [field]: value } : rule
+      ruleIndex === index ? normalizeRuleUpdate(rule, field, value) : rule
     )),
+  }));
+}
+
+function normalizeRuleUpdate(rule, field, value) {
+  const updated = { ...rule, [field]: value };
+  if (field === "condition" && value === "birthday_today") {
+    updated.threshold_value = "hoje";
+  }
+  return updated;
+}
+
+function applyAlertPreset(templateType, setAlertForm) {
+  const preset = alertPresets[templateType] || alertPresets.custom;
+  setAlertForm((current) => ({
+    ...current,
+    template_type: templateType,
+    name: preset.name || current.name,
+    rules: preset.rules.map((rule) => ({ ...rule })),
+    message_template: preset.message_template,
+    message_variables: { ...preset.message_variables },
+    channels: templateType === "birthdays" ? ["whatsapp"] : current.channels,
+  }));
+}
+
+function extractTemplateVariables(template) {
+  const matches = [...String(template || "").matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)];
+  return [...new Set(matches.map((match) => match[1].trim()))];
+}
+
+function updateMessageVariable(setAlertForm, variable, columnName) {
+  setAlertForm((current) => ({
+    ...current,
+    message_variables: {
+      ...(current.message_variables || {}),
+      [variable]: columnName,
+    },
   }));
 }
 
