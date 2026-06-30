@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models.alert import Alert, AlertOccurrence
 from app.models.app_setting import AppSetting
+from app.models.tenant import Tenant
 
 
 def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence, db: Session) -> None:
@@ -24,7 +25,7 @@ def send_alert_notifications(alert: Alert, result, occurrence: AlertOccurrence, 
         if "email" in alert.channels:
             send_email(alert.recipients, subject, body)
         if "whatsapp" in alert.channels:
-            send_whatsapp(alert.recipients, body)
+            send_whatsapp(alert.recipients, body, alert.tenant)
 
     copy_email = get_app_setting(db, "alert_copy_email")
     copy_whatsapp = get_app_setting(db, "alert_copy_whatsapp")
@@ -53,12 +54,14 @@ def send_email(recipients: list[str], subject: str, body: str) -> None:
         smtp.send_message(message)
 
 
-def send_whatsapp(recipients: list[str], body: str) -> None:
-    settings = get_settings()
-    if settings.whatsapp_provider.lower() == "twilio":
+def send_whatsapp(recipients: list[str], body: str, tenant: Tenant | None = None) -> None:
+    config = resolve_whatsapp_config(tenant)
+    if not config.get("is_active", True):
+        return
+    if config["provider"].lower() == "twilio":
         send_whatsapp_twilio(recipients, body)
         return
-    send_whatsapp_meta(recipients, body)
+    send_whatsapp_meta(recipients, body, config)
 
 
 def has_dynamic_recipients(alert: Alert) -> bool:
@@ -73,24 +76,23 @@ def send_dynamic_notifications(alert: Alert, result, subject: str, acknowledgeme
         if "email" in alert.channels and email:
             send_email([email], subject, body)
         if "whatsapp" in alert.channels and whatsapp:
-            send_whatsapp([whatsapp], body)
+            send_whatsapp([whatsapp], body, alert.tenant)
 
 
-def send_whatsapp_meta(recipients: list[str], body: str) -> None:
-    settings = get_settings()
-    if not settings.meta_whatsapp_token or not settings.meta_whatsapp_phone_number_id:
+def send_whatsapp_meta(recipients: list[str], body: str, config: dict) -> None:
+    if not config["token"] or not config["phone_number_id"]:
         return
 
     for recipient in recipients:
         phone_number = normalize_whatsapp_number(recipient)
         if not phone_number:
             continue
-        payload = build_meta_whatsapp_payload(phone_number, body)
+        payload = build_meta_whatsapp_payload(phone_number, body, config)
         request = Request(
-            f"https://graph.facebook.com/{settings.meta_whatsapp_api_version}/{settings.meta_whatsapp_phone_number_id}/messages",
+            f"https://graph.facebook.com/{config['api_version']}/{config['phone_number_id']}/messages",
             data=json.dumps(payload).encode("utf-8"),
             headers={
-                "Authorization": f"Bearer {settings.meta_whatsapp_token}",
+                "Authorization": f"Bearer {config['token']}",
                 "Content-Type": "application/json",
             },
             method="POST",
@@ -119,19 +121,18 @@ def send_whatsapp_twilio(recipients: list[str], body: str) -> None:
         client.messages.create(from_=settings.twilio_whatsapp_from, to=to, body=body)
 
 
-def build_meta_whatsapp_payload(phone_number: str, body: str) -> dict:
-    settings = get_settings()
+def build_meta_whatsapp_payload(phone_number: str, body: str, config: dict) -> dict:
     payload: dict = {
         "messaging_product": "whatsapp",
         "to": phone_number,
     }
-    if settings.meta_whatsapp_template_name:
+    if config["template_name"]:
         payload.update(
             {
                 "type": "template",
                 "template": {
-                    "name": settings.meta_whatsapp_template_name,
-                    "language": {"code": settings.meta_whatsapp_template_language},
+                    "name": config["template_name"],
+                    "language": {"code": config["template_language"]},
                     "components": [
                         {
                             "type": "body",
@@ -144,6 +145,29 @@ def build_meta_whatsapp_payload(phone_number: str, body: str) -> dict:
         return payload
     payload.update({"type": "text", "text": {"preview_url": False, "body": body[:4096]}})
     return payload
+
+
+def resolve_whatsapp_config(tenant: Tenant | None = None) -> dict:
+    settings = get_settings()
+    if tenant and tenant.whatsapp_provider == "meta" and tenant.meta_whatsapp_token and tenant.meta_whatsapp_phone_number_id:
+        return {
+            "provider": tenant.whatsapp_provider,
+            "token": tenant.meta_whatsapp_token,
+            "phone_number_id": tenant.meta_whatsapp_phone_number_id,
+            "api_version": tenant.meta_whatsapp_api_version or "v20.0",
+            "template_name": tenant.meta_whatsapp_template_name or "",
+            "template_language": tenant.meta_whatsapp_template_language or "pt_BR",
+            "is_active": tenant.whatsapp_is_active,
+        }
+    return {
+        "provider": settings.whatsapp_provider,
+        "token": settings.meta_whatsapp_token,
+        "phone_number_id": settings.meta_whatsapp_phone_number_id,
+        "api_version": settings.meta_whatsapp_api_version,
+        "template_name": settings.meta_whatsapp_template_name,
+        "template_language": settings.meta_whatsapp_template_language,
+        "is_active": True,
+    }
 
 
 def normalize_whatsapp_number(recipient: str) -> str:

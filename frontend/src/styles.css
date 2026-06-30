@@ -266,6 +266,12 @@ textarea {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.tenant-whatsapp-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .alert-form button,
 .user-form button,
 .alert-form fieldset {
@@ -383,7 +389,12 @@ label.inline input {
 
 .companies-head,
 .companies-row {
-  grid-template-columns: 1.3fr 110px 90px 90px 160px 100px;
+  grid-template-columns: 1.3fr 100px 80px 80px 150px 120px 90px;
+}
+
+.tenant-whatsapp-active {
+  align-self: end;
+  min-height: 40px;
 }
 
 .agents-head,
@@ -584,6 +595,7 @@ th {
   .two-column,
   .alert-form,
   .user-form,
+  .tenant-whatsapp-form,
   .signup-form,
   .settings-form {
     grid-template-columns: 1fr;

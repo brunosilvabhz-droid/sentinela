@@ -43,7 +43,10 @@ def update_tenant(
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa nao encontrada")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    if update_data.get("meta_whatsapp_token") == "":
+        update_data.pop("meta_whatsapp_token")
+    for key, value in update_data.items():
         setattr(tenant, key, value)
     db.commit()
     db.refresh(tenant)
@@ -66,6 +69,13 @@ def signup_company(
         max_alerts=payload.max_alerts,
         max_upload_mb=payload.max_upload_mb,
         data_retention_days=payload.data_retention_days,
+        whatsapp_provider=payload.whatsapp_provider,
+        meta_whatsapp_token=payload.meta_whatsapp_token,
+        meta_whatsapp_phone_number_id=payload.meta_whatsapp_phone_number_id,
+        meta_whatsapp_api_version=payload.meta_whatsapp_api_version,
+        meta_whatsapp_template_name=payload.meta_whatsapp_template_name,
+        meta_whatsapp_template_language=payload.meta_whatsapp_template_language,
+        whatsapp_is_active=payload.whatsapp_is_active,
     )
     db.add(tenant)
     db.flush()

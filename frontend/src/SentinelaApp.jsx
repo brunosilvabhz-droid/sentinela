@@ -118,9 +118,27 @@ const emptySignupForm = {
   max_alerts: 5,
   max_upload_mb: 10,
   data_retention_days: 90,
+  whatsapp_provider: "meta",
+  meta_whatsapp_token: "",
+  meta_whatsapp_phone_number_id: "",
+  meta_whatsapp_api_version: "v20.0",
+  meta_whatsapp_template_name: "",
+  meta_whatsapp_template_language: "pt_BR",
+  whatsapp_is_active: true,
   admin_name: "",
   admin_email: "",
   admin_password: "",
+};
+
+const emptyWhatsAppTenantForm = {
+  tenant_id: "",
+  whatsapp_provider: "meta",
+  meta_whatsapp_token: "",
+  meta_whatsapp_phone_number_id: "",
+  meta_whatsapp_api_version: "v20.0",
+  meta_whatsapp_template_name: "",
+  meta_whatsapp_template_language: "pt_BR",
+  whatsapp_is_active: true,
 };
 
 export default function SentinelaApp() {
@@ -154,6 +172,7 @@ export default function SentinelaApp() {
   const [uploadForm, setUploadForm] = useState({ name: "Nova fonte CSV", source_type: "csv", file: null });
   const [alertForm, setAlertForm] = useState(emptyAlertForm);
   const [userForm, setUserForm] = useState(emptyUserForm);
+  const [whatsAppTenantForm, setWhatsAppTenantForm] = useState(emptyWhatsAppTenantForm);
   const [appSettings, setAppSettings] = useState({ alert_copy_email: "", alert_copy_whatsapp: "" });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -226,6 +245,33 @@ export default function SentinelaApp() {
       );
       setSignupForm(emptySignupForm);
       setMessage("Empresa e admin criados.");
+      await loadWorkspace();
+    });
+  }
+
+  async function updateTenantWhatsApp(event) {
+    event.preventDefault();
+    await runAction(async () => {
+      if (!whatsAppTenantForm.tenant_id) {
+        throw new Error("Selecione a empresa.");
+      }
+      const payload = {
+        whatsapp_provider: whatsAppTenantForm.whatsapp_provider,
+        meta_whatsapp_phone_number_id: whatsAppTenantForm.meta_whatsapp_phone_number_id || null,
+        meta_whatsapp_api_version: whatsAppTenantForm.meta_whatsapp_api_version || "v20.0",
+        meta_whatsapp_template_name: whatsAppTenantForm.meta_whatsapp_template_name || null,
+        meta_whatsapp_template_language: whatsAppTenantForm.meta_whatsapp_template_language || "pt_BR",
+        whatsapp_is_active: whatsAppTenantForm.whatsapp_is_active,
+      };
+      if (whatsAppTenantForm.meta_whatsapp_token) {
+        payload.meta_whatsapp_token = whatsAppTenantForm.meta_whatsapp_token;
+      }
+      await api(`/tenants/${whatsAppTenantForm.tenant_id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      setWhatsAppTenantForm((current) => ({ ...current, meta_whatsapp_token: "" }));
+      setMessage("Configuracao de WhatsApp da empresa salva.");
       await loadWorkspace();
     });
   }
@@ -649,9 +695,12 @@ export default function SentinelaApp() {
           <CompaniesView
             loading={loading}
             setSignupForm={setSignupForm}
+            setWhatsAppTenantForm={setWhatsAppTenantForm}
             signupCompany={signupCompany}
             signupForm={signupForm}
             tenants={tenants.filter((tenant) => tenant.document !== "SENTINELA")}
+            updateTenantWhatsApp={updateTenantWhatsApp}
+            whatsAppTenantForm={whatsAppTenantForm}
           />
         )}
 
@@ -933,7 +982,7 @@ function AuthPanel({
   );
 }
 
-function CompaniesView({ loading, setSignupForm, signupCompany, signupForm, tenants }) {
+function CompaniesView({ loading, setSignupForm, setWhatsAppTenantForm, signupCompany, signupForm, tenants, updateTenantWhatsApp, whatsAppTenantForm }) {
   return (
     <>
       <section className="panel form-grid">
@@ -956,6 +1005,9 @@ function CompaniesView({ loading, setSignupForm, signupCompany, signupForm, tena
           <label>Limite de alertas<input type="number" min="1" value={signupForm.max_alerts} onChange={(event) => setSignupForm((current) => ({ ...current, max_alerts: Number(event.target.value) }))} /></label>
           <label>Upload maximo (MB)<input type="number" min="1" value={signupForm.max_upload_mb} onChange={(event) => setSignupForm((current) => ({ ...current, max_upload_mb: Number(event.target.value) }))} /></label>
           <label>Retencao de dados (dias)<input type="number" min="1" value={signupForm.data_retention_days} onChange={(event) => setSignupForm((current) => ({ ...current, data_retention_days: Number(event.target.value) }))} /></label>
+          <label>Meta Phone Number ID<input value={signupForm.meta_whatsapp_phone_number_id} onChange={(event) => setSignupForm((current) => ({ ...current, meta_whatsapp_phone_number_id: event.target.value }))} placeholder="ID do numero no WhatsApp Business" /></label>
+          <label>Meta Token<input type="password" value={signupForm.meta_whatsapp_token} onChange={(event) => setSignupForm((current) => ({ ...current, meta_whatsapp_token: event.target.value }))} placeholder="Token permanente da Meta" /></label>
+          <label>Template Meta<input value={signupForm.meta_whatsapp_template_name} onChange={(event) => setSignupForm((current) => ({ ...current, meta_whatsapp_template_name: event.target.value }))} placeholder="Opcional" /></label>
           <label>Nome do admin<input value={signupForm.admin_name} onChange={(event) => setSignupForm((current) => ({ ...current, admin_name: event.target.value }))} /></label>
           <label>Email do admin<input value={signupForm.admin_email} onChange={(event) => setSignupForm((current) => ({ ...current, admin_email: event.target.value }))} /></label>
           <label>Senha do admin<input type="password" value={signupForm.admin_password} onChange={(event) => setSignupForm((current) => ({ ...current, admin_password: event.target.value }))} /></label>
@@ -968,10 +1020,57 @@ function CompaniesView({ loading, setSignupForm, signupCompany, signupForm, tena
         </form>
       </section>
 
+      <section className="panel form-grid">
+        <div className="panel-title with-action">
+          <div>
+            <h2>WhatsApp do cliente</h2>
+            <p>Configure a conta Meta/WhatsApp Business da empresa. O cliente paga a Meta diretamente.</p>
+          </div>
+          <Settings size={18} />
+        </div>
+        <form className="tenant-whatsapp-form" onSubmit={updateTenantWhatsApp}>
+          <label>Empresa
+            <select
+              value={whatsAppTenantForm.tenant_id}
+              onChange={(event) => {
+                const tenant = tenants.find((item) => String(item.id) === event.target.value);
+                setWhatsAppTenantForm({
+                  ...emptyWhatsAppTenantForm,
+                  tenant_id: event.target.value,
+                  whatsapp_provider: tenant?.whatsapp_provider || "meta",
+                  meta_whatsapp_phone_number_id: tenant?.meta_whatsapp_phone_number_id || "",
+                  meta_whatsapp_api_version: tenant?.meta_whatsapp_api_version || "v20.0",
+                  meta_whatsapp_template_name: tenant?.meta_whatsapp_template_name || "",
+                  meta_whatsapp_template_language: tenant?.meta_whatsapp_template_language || "pt_BR",
+                  whatsapp_is_active: tenant?.whatsapp_is_active ?? true,
+                });
+              }}
+            >
+              <option value="">Selecione</option>
+              {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+            </select>
+          </label>
+          <label>Provider
+            <select value={whatsAppTenantForm.whatsapp_provider} onChange={(event) => setWhatsAppTenantForm((current) => ({ ...current, whatsapp_provider: event.target.value }))}>
+              <option value="meta">Meta Cloud API</option>
+            </select>
+          </label>
+          <label>Phone Number ID<input value={whatsAppTenantForm.meta_whatsapp_phone_number_id} onChange={(event) => setWhatsAppTenantForm((current) => ({ ...current, meta_whatsapp_phone_number_id: event.target.value }))} /></label>
+          <label>Novo token<input type="password" value={whatsAppTenantForm.meta_whatsapp_token} onChange={(event) => setWhatsAppTenantForm((current) => ({ ...current, meta_whatsapp_token: event.target.value }))} placeholder="Deixe vazio para manter o atual" /></label>
+          <label>API version<input value={whatsAppTenantForm.meta_whatsapp_api_version} onChange={(event) => setWhatsAppTenantForm((current) => ({ ...current, meta_whatsapp_api_version: event.target.value }))} /></label>
+          <label>Template<input value={whatsAppTenantForm.meta_whatsapp_template_name} onChange={(event) => setWhatsAppTenantForm((current) => ({ ...current, meta_whatsapp_template_name: event.target.value }))} placeholder="Opcional" /></label>
+          <label>Idioma<input value={whatsAppTenantForm.meta_whatsapp_template_language} onChange={(event) => setWhatsAppTenantForm((current) => ({ ...current, meta_whatsapp_template_language: event.target.value }))} /></label>
+          <label className="inline tenant-whatsapp-active"><input type="checkbox" checked={whatsAppTenantForm.whatsapp_is_active} onChange={(event) => setWhatsAppTenantForm((current) => ({ ...current, whatsapp_is_active: event.target.checked }))} /> Ativo</label>
+          <button disabled={loading || !whatsAppTenantForm.tenant_id} type="submit">
+            <Settings size={16} /> Salvar WhatsApp
+          </button>
+        </form>
+      </section>
+
       <section className="panel">
         <div className="panel-title"><h2>Empresas cadastradas</h2></div>
         <div className="table">
-          <div className="row companies-head"><span>Empresa</span><span>Plano</span><span>Fontes</span><span>Alertas</span><span>Dados</span><span>Status</span></div>
+          <div className="row companies-head"><span>Empresa</span><span>Plano</span><span>Fontes</span><span>Alertas</span><span>Dados</span><span>WhatsApp</span><span>Status</span></div>
           {tenants.map((tenant) => (
             <div className="row companies-row" key={tenant.id}>
               <span>{tenant.name}</span>
@@ -979,6 +1078,7 @@ function CompaniesView({ loading, setSignupForm, signupCompany, signupForm, tena
               <span>{tenant.max_sources}</span>
               <span>{tenant.max_alerts}</span>
               <span>{tenant.max_upload_mb || 10} MB / {tenant.data_retention_days || 90} dias</span>
+              <span>{tenant.whatsapp_configured ? "configurado" : "pendente"}</span>
               <span>{tenant.is_active ? "ativa" : "inativa"}</span>
             </div>
           ))}
