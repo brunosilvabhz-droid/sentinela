@@ -11,7 +11,7 @@ export default function Footer({ content }) {
         <div className="text-sm leading-7">
           <strong className="text-white">Contato</strong>
           <p>Domínio: {content.domain}</p>
-          <p>WhatsApp: (31) 9127-5790</p>
+          <p>E-mail: contato@impactocg.com</p>
         </div>
         <div className="grid content-start gap-2 text-sm">
           <strong className="text-white">Links</strong>
