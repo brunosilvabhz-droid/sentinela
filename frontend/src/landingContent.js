@@ -1,4 +1,5 @@
-import impactoLogo from "./assets/impacto-logo.png";
+import impactoLogo from "./assets/impacto-logo-dark.png";
+import impactoHeaderLogo from "./assets/impacto-logo-header.png";
 import { SENTINELA_LOGIN_URL, WHATSAPP_URL, COMPANY_DOMAIN } from "./constants";
 
 export const LANDING_CONTENT_KEY = "impacto_landing_content_v1";
@@ -7,6 +8,7 @@ export const DEFAULT_LANDING_CONTENT = {
   companyName: "IMPACTO",
   domain: COMPANY_DOMAIN,
   logoUrl: impactoLogo,
+  headerLogoUrl: impactoHeaderLogo,
   heroImageUrl: impactoLogo,
   eyebrow: "Observabilidade de processos de negócio",
   heroTitle: "Seus processos continuam funcionando quando ninguém está olhando?",

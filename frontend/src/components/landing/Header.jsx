@@ -13,8 +13,8 @@ export default function Header({ content }) {
     <header className="impacto-header fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-slate-950/94 shadow-2xl shadow-slate-950/20 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-4 py-3 sm:px-6 lg:px-8">
         <a className="flex min-w-0 items-center gap-3" href="#inicio" aria-label={content.companyName}>
-          <span className="flex h-12 w-36 items-center justify-center rounded-md bg-white p-1.5 shadow-lg shadow-black/20 lg:w-44">
-            <img className="max-h-full max-w-full object-contain" src={content.logoUrl} alt={content.companyName} />
+          <span className="flex h-14 w-40 items-center justify-center overflow-hidden rounded-md border border-white/10 bg-slate-950/70 shadow-lg shadow-black/20 ring-1 ring-emerald-300/10 lg:w-48">
+            <img className="h-full w-full object-cover object-center" src={content.headerLogoUrl || content.logoUrl} alt={content.companyName} />
           </span>
         </a>
 
