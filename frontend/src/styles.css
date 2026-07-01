@@ -672,10 +672,6 @@ th {
   }
 }
 
-.impacto-header nav {
-  display: flex;
-}
-
 .impacto-desktop-nav,
 .impacto-desktop-actions {
   display: flex;
