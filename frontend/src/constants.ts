@@ -7,8 +7,9 @@ export const SENTINELA_LOGIN_URL =
 export const COMPANY_DOMAIN = "impactocg.com";
 
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+const DEFAULT_API_FALLBACK_URL = import.meta.env.DEV ? "https://sentinela-api-ef0m.onrender.com/api/v1" : "";
 
 export const API_FALLBACK_URLS = [
   API_URL,
-  import.meta.env.VITE_API_FALLBACK_URL || "https://sentinela-api-ef0m.onrender.com/api/v1",
+  import.meta.env.VITE_API_FALLBACK_URL || DEFAULT_API_FALLBACK_URL,
 ].filter((url, index, urls) => url && urls.indexOf(url) === index);
