@@ -144,8 +144,8 @@ const emptyWhatsAppTenantForm = {
 export default function SentinelaApp() {
   const ackToken = getAckTokenFromPath();
   const [token, setToken] = useState(() => localStorage.getItem("sentinela_token") || "");
-  const [email, setEmail] = useState("superadmin@sentinela.com.br");
-  const [password, setPassword] = useState("superadmin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [signupForm, setSignupForm] = useState(emptySignupForm);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [summary, setSummary] = useState(null);
@@ -1067,9 +1067,9 @@ function AuthPanel({
       <div className="panel-title">
         <h2>Entrar no Sentinela</h2>
       </div>
-      <form className="login" onSubmit={login}>
-        <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-        <label>Senha<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+      <form className="login" onSubmit={login} autoComplete="on">
+        <label>Email<input type="email" name="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>Senha<input type="password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
         <button type="submit" disabled={loading}>Entrar</button>
       </form>
     </section>
